@@ -90,65 +90,74 @@ Receive Rev for previous state
 func (htlc *qln.HTLC) HTLCToBytes() []byte {
 	var b []byte
 
-	// Struct is qchan1 (4), qchan2 (4), exchangeAmountQchan1 (4)
-	// exchangeAmountQchan2 (4), preimage (32), rHash (32), locktime (4)
+	// Struct is incoming (4), qchan1 (4), qchan2 (4), exchangeAmountQchan1 (8)
+	// exchangeAmountQchan2 (8), preimage (20) not included, rHash (20), locktime (4)
 	//
-	// Total Length: 84
+	// Total Length: 52
 
-	b = append(b, htlc.qchan1...)
-	b = append(b, htlc.qchan2...)
-	b = append(b, lnutil.I32tB(htlc.exchangeAmountQchan1)...)
-	b = append(b, lnutil.I32tB(htlc.exchangeAmountQchan2)...)
-	b = append(b, htlc.preimage[:]...)
+	if (htlc.incoming)
+	{
+		boolAsInt uint32 := 1
+	}
+	else
+	{
+		boolAsInt uint32 := 0
+	}
+
+	b = append(b, lnutil.U32tB(boolAsInt)...)
+	b = append(b, lnutil.U32tB(htlc.qchanIdx1)...)
+	b = append(b, lnutil.U32tB(htlc.qchanIdx2)...)
+	b = append(b, lnutil.I64tB(htlc.exchangeAmountQchan1)...)
+	b = append(b, lnutil.I64tB(htlc.exchangeAmountQchan2)...)
+	//b = append(b, htlc.preimage[:]...)
 	b = append(b, htlc.rHash[:]...)
-	b = append(b, lnutil.I32tB(htlc.locktime)...)
+	b = append(b, lnutil.U32tB(htlc.locktime)...)
 
 	return b
 }
 
 // HTLC Deserialization Method
 func HTLCFromBytes(b []byte) (*qln.HTLC, error) {
-	if len(b) != 134 {
-		return nil, fmt.Errorf("%d bytes, need 134", len(b))
+	if len(b) != 52{
+		return nil, fmt.Errorf("%d bytes, need 52", len(b))
 	}
 
 	htlc := new(qln.HTLC)
 
-	// First Field Converted
-	copy(htlc.qchan1[:], b[:4])
+	// "incoming" Variable Converted
+	if (lnutil.BtU32(b[:4]) == 1)
+	{
+		htlc.incoming := true
+	}
+	else
+	{
+		htlc.incoming := false
+	}
 
-	// Second Field Converted
-	copy(htlc.qchan2[:], b[4:8])
+	// "qchanIdx1" Variable Converted
+	htlc.qchanIdx1 := lnutil.BtU32(b[4:8])
 
-	// Third Field Converted
-	hltc.exchangeAmountQchan1 = lnutil.BtI32(b[8:12])
+	// "qchanIdx2" Variable Converted
+	htlc.qchanIdx2 := lnutil.BtU32(b[8:12])
 
-	// Fourth Field Converted
-	hltc.exchangeAmountQchan2 = lnutil.BtI32(b[12:16])
+	// "exchangeAmountQchan1" Variable Converted
+	hltc.exchangeAmountQchan1 := lnutil.BtI64(b[12:20])
 
-	// Fifth Field Converted
-	copy(htlc.preimage[:], b[16:48])
+	// "exchangeAmountQchan2" Variable Converted
+	hltc.exchangeAmountQchan2 := lnutil.BtI64(b[20:28])
 
-	// Sixth Field Converted
-	copy(htlc.rHash[:], b[48:80])
+	// "preimage" Variable Converted
+	// copy(htlc.preimage[:], b[16:48])
 
-	// Seventh Field Converted
-	htlc.Delta = lnutil.BtI32(b[80:84])
+	// "rHash" Variable Converted
+	copy(htlc.rHash[:], b[28:48])
+
+	// "qchan2" Variable Converted
+	htlc.locktime := lnutil.BtU32(b[48:52])
 
 	return htlc, nil
 
 }
-
-
-
-
-
-
-
-
-
-
-
 
 // example message struct
 type SigRevMsg struct {
@@ -762,5 +771,11 @@ func (nd *LitNode) RevHandler(msg lnutil.RevMsg, qc *Qchan) error {
 	qc.ClearToSend <- true
 
 	fmt.Printf("REV OK, state %d all clear.\n", qc.State.StateIdx)
+	return nil
+}
+
+// ExchangeChannels initiates a state update by setting up HTLC's
+// TODO.jesus
+func (nd LitNode) ExchangeChannel(qc *Qchan, amt int64, senderIdx uint32) error {
 	return nil
 }

@@ -137,6 +137,11 @@ func (q *Qchan) BuildStateTx(mine bool) (*wire.MsgTx, error) {
 		revPub = lnutil.CombinePubs(q.TheirHAKDBase, curElk)
 		timePub = lnutil.AddPubsEZ(q.MyHAKDBase, curElk)
 
+		// TODO.jesus
+		// probably how to make the pubkeys for HTLC
+		//		htlcPubMine := timePub
+		//		htlcPubTheirs := lnutil.AddPubsEZ(q.TheirHAKDBase, s.ElkPoint)
+
 		pkhPub = q.TheirRefundPub
 
 		// nonzero amts means build the output
@@ -152,6 +157,12 @@ func (q *Qchan) BuildStateTx(mine bool) (*wire.MsgTx, error) {
 		// SH pubkeys are our base points plus the received elk point
 		revPub = lnutil.CombinePubs(q.MyHAKDBase, s.ElkPoint)
 		timePub = lnutil.AddPubsEZ(q.TheirHAKDBase, s.ElkPoint)
+
+		// TODO.jesus
+		// probably how to make the pubkeys for HTLC
+		//		htlcPubMine := lnutil.AddPubsEZ(q.MyHAKDBase, curElk)
+		//		htlcPubTheirs := timePub
+
 		// PKH output
 		pkhPub = q.MyRefundPub
 
@@ -176,6 +187,9 @@ func (q *Qchan) BuildStateTx(mine bool) (*wire.MsgTx, error) {
 	// now that everything is chosen, build fancy script and pkh script
 	fancyScript := lnutil.CommitScript(revPub, timePub, q.Delay)
 	pkhScript := lnutil.DirectWPKHScript(pkhPub) // p2wpkh-ify
+	// TODO.jesus
+	// also create an HTLC script here
+	// htlcScript := lnutil.???
 
 	fmt.Printf("> made SH script, state %d\n", s.StateIdx)
 	fmt.Printf("\t revPub %x timeout pub %x \n", revPub, timePub)
@@ -188,6 +202,9 @@ func (q *Qchan) BuildStateTx(mine bool) (*wire.MsgTx, error) {
 	// create txouts by assigning amounts
 	outFancy := wire.NewTxOut(fancyAmt, fancyScript)
 	outPKH := wire.NewTxOut(pkhAmt, pkhScript)
+	// TODO.jesus
+	// also make htlc output here
+	// outHTLC := wire.NewTxOut(htlcAmt, htlcScript)
 
 	fmt.Printf("\tcombined refund %x, pkh %x\n", pkhPub, outPKH.PkScript)
 

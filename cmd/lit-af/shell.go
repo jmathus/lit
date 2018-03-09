@@ -187,6 +187,16 @@ func (lc *litAfClient) Shellparse(cmdslice []string) error {
 		return nil
 	}
 
+	// TODO.jesus
+	// Sends a currency exchange request
+	if cmd == "exchange" {
+		err = lc.Exchange(args)
+		if err != nil {
+			fmt.Fprintf(color.Output, "exchange error: %s\n", err)
+		}
+		return nil
+	}
+
 	fmt.Fprintf(color.Output, "Command not recognized. type help for command list.\n")
 	return nil
 }

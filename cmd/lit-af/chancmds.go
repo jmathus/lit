@@ -55,6 +55,15 @@ var historyCommand = &Command{
 	ShortDescription: "Show all the metadata for justice txs.\n",
 }
 
+// TODO.jesus
+var exchangeCommand = &Command{
+	Format: fmt.Sprintf("%s%s%s%s\n", lnutil.White("exchange"), lnutil.ReqColor("initiator id", "amount sent", "channel idx one", "acceptor id", "amount requested", "channel idx two"), lnutil.OptColor("times"), lnutil.OptColor("data")),
+	Description: fmt.Sprintf("%s\n%s\n%s\n",
+		"Exchange the amounts proposed on the two different channels listed (with each channel ideally having a different currency).",
+		"Optionally, the exchange operation can be accepted by the receiver to finalize the exchange through HTLC mechanisms."),
+	ShortDescription: "Send an exchange proposal for the given amounts (in different currencies) to the other party on the two given channels.\n",
+}
+
 func (lc *litAfClient) History(textArgs []string) error {
 	if len(textArgs) > 0 && textArgs[0] == "-h" {
 		fmt.Fprintf(color.Output, historyCommand.Format)
@@ -282,6 +291,87 @@ func (lc *litAfClient) Dump(textArgs []string) error {
 		}
 		fmt.Fprintf(color.Output, "\n\tprivkey: %s", lnutil.Red(t.WIF))
 		fmt.Fprintf(color.Output, "\n")
+	}
+
+	return nil
+}
+
+// TODO.jesus
+// Exchange is the shell command which calls exchangeRequest
+// Do I need more args like (time) or (data)???
+func (lc *litAfClient) Exchange(textArgs []string) error {
+	if len(textArgs) > 0 && textArgs[0] == "-h" {
+		fmt.Fprintf(color.Output, exchangeCommand.Format)
+		fmt.Fprintf(color.Output, exchangeCommand.Description)
+		return nil
+	}
+
+	args := new(litrpc.ExchangeArgs)
+	reply := new(litrpc.ExchangeReply)
+
+	if len(textArgs) < 6 {
+		return fmt.Errorf("need args: exchange initiatorIdx amt1 chanIdx1 acceptorIdx amt2 chanIdx2 (times) (data)")
+	}
+
+	initiatorIdx, err := strconv.Atoi(textArgs[0])
+	if err != nil {
+		return err
+	}
+	amt1, err := strconv.Atoi(textArgs[1])
+	if err != nil {
+		return err
+	}
+	chanIdx1, err := strconv.Atoi(textArgs[2])
+	if err != nil {
+		return err
+	}
+	acceptorIdx, err := strconv.Atoi(textArgs[3])
+	if err != nil {
+		return err
+	}
+	amt2, err := strconv.Atoi(textArgs[4])
+	if err != nil {
+		return err
+	}
+	chanIdx2, err := strconv.Atoi(textArgs[5])
+	if err != nil {
+		return err
+	}
+
+
+	times := int(1)
+	if len(textArgs) > 6 {
+		times, err = strconv.Atoi(textArgs[6])
+		if err != nil {
+			return err
+		}
+	}
+
+	if len(textArgs) > 7 {
+		data, err := hex.DecodeString(textArgs[7])
+		if err != nil {
+			// Wasn't valid hex, copy directly and truncate
+			copy(args.Data[:], textArgs[7])
+		} else {
+			copy(args.Data[:], data[:])
+		}
+	}
+
+	args.initiatorIdx = uint32(initiatorIdx)
+	args.amt1 = int64(amt1)
+	args.chanIdx1 = uint32(chanIdx1)
+	args.acceptorIdx = uint32(acceptorIdx)
+	args.amt2 = int64(amt2)
+	args.chanIdx2 = uint32(chanIdx2)
+
+	for times > 0 {
+		err := lc.rpccon.Call("LitRPC.Exchange", args, reply)
+		if err != nil {
+			return err
+		}
+		// TODO.jesus Edit to add currencies used
+		fmt.Fprintf(color.Output, "Exchanged %s at state %s for %s\n", lnutil.SatoshiColor(int64(amt1)), lnutil.White(reply.StateIndex), lnutil.SatoshiColor(int64(amt2)))
+		times--
 	}
 
 	return nil
