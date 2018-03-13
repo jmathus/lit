@@ -57,7 +57,7 @@ var historyCommand = &Command{
 
 // TODO.jesus
 var exchangeCommand = &Command{
-	Format: fmt.Sprintf("%s%s%s%s\n", lnutil.White("exchange"), lnutil.ReqColor("initiator id", "amount sent", "channel idx one", "acceptor id", "amount requested", "channel idx two"), lnutil.OptColor("times"), lnutil.OptColor("data")),
+	Format: fmt.Sprintf("%s%s%s%s\n", lnutil.White("exchange"), lnutil.ReqColor("channel idx one", "amount sent", "channel idx two", "amount requested"), lnutil.OptColor("times"), lnutil.OptColor("data")),
 	Description: fmt.Sprintf("%s\n%s\n%s\n",
 		"Exchange the amounts proposed on the two different channels listed (with each channel ideally having a different currency).",
 		"Optionally, the exchange operation can be accepted by the receiver to finalize the exchange through HTLC mechanisms."),
@@ -309,11 +309,11 @@ func (lc *litAfClient) Exchange(textArgs []string) error {
 	args := new(litrpc.ExchangeArgs)
 	reply := new(litrpc.ExchangeReply)
 
-	if len(textArgs) < 6 {
-		return fmt.Errorf("need args: exchange initiatorIdx amt1 chanIdx1 acceptorIdx amt2 chanIdx2 (times) (data)")
+	if len(textArgs) < 4 {
+		return fmt.Errorf("need args: exchange chanIdx1 amt1 chanIdx2 amt2 (times) (data)")
 	}
 
-	initiatorIdx, err := strconv.Atoi(textArgs[0])
+	chanIdx1, err := strconv.Atoi(textArgs[0])
 	if err != nil {
 		return err
 	}
@@ -321,48 +321,38 @@ func (lc *litAfClient) Exchange(textArgs []string) error {
 	if err != nil {
 		return err
 	}
-	chanIdx1, err := strconv.Atoi(textArgs[2])
+	chanIdx2, err := strconv.Atoi(textArgs[2])
 	if err != nil {
 		return err
 	}
-	acceptorIdx, err := strconv.Atoi(textArgs[3])
-	if err != nil {
-		return err
-	}
-	amt2, err := strconv.Atoi(textArgs[4])
-	if err != nil {
-		return err
-	}
-	chanIdx2, err := strconv.Atoi(textArgs[5])
+	amt2, err := strconv.Atoi(textArgs[3])
 	if err != nil {
 		return err
 	}
 
 
 	times := int(1)
-	if len(textArgs) > 6 {
-		times, err = strconv.Atoi(textArgs[6])
+	if len(textArgs) > 4 {
+		times, err = strconv.Atoi(textArgs[4])
 		if err != nil {
 			return err
 		}
 	}
 
-	if len(textArgs) > 7 {
-		data, err := hex.DecodeString(textArgs[7])
+	if len(textArgs) > 5 {
+		data, err := hex.DecodeString(textArgs[5])
 		if err != nil {
 			// Wasn't valid hex, copy directly and truncate
-			copy(args.Data[:], textArgs[7])
+			copy(args.Data[:], textArgs[5])
 		} else {
 			copy(args.Data[:], data[:])
 		}
 	}
 
-	args.initiatorIdx = uint32(initiatorIdx)
-	args.amt1 = int64(amt1)
 	args.chanIdx1 = uint32(chanIdx1)
-	args.acceptorIdx = uint32(acceptorIdx)
-	args.amt2 = int64(amt2)
+	args.amt1 = int64(amt1)
 	args.chanIdx2 = uint32(chanIdx2)
+	args.amt2 = int64(amt2)
 
 	for times > 0 {
 		err := lc.rpccon.Call("LitRPC.Exchange", args, reply)

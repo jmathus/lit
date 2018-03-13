@@ -329,15 +329,13 @@ func (r *LitRPC) DumpPrivs(args NoArgs, reply *DumpReply) error {
 	return nil
 }
 
-// --------------------?----- Exchange
+// ------------------------- Exchange
 // TODO.jesus
 type ExchangeArgs struct {
-	initiatorIdx uint32
-	acceptorIdx uint32
-	amt1     int64
-	amt2     int64
 	chanIdx1 uint32
+	amt1     int64
 	chanIdx2 uint32
+	amt2     int64
 	Data    [32]byte
 }
 type ExchangeReply struct {
@@ -357,7 +355,7 @@ func (r *LitRPC) Exchange(args ExchangeArgs, reply *ExchangeReply) error {
 			"can't exchange %d max is 1 coin (100000000), min is 1", args.amt2)
 	}
 
-	fmt.Printf("%d exchanged %d on chan %d for %d on chan %d from chan\n", args.initiatorIdx, args.amt1, args.chanIdx1, args.amt2, args.acceptorIdx, args.chanIdx2)
+	fmt.Printf("Exchanged %d on chan %d for %d on chan %d\n", args.amt1, args.chanIdx1, args.amt2, args.chanIdx2)
 
 	// load the whole channel from disk just to see who the peer is
 	// (pretty inefficient)
@@ -429,11 +427,11 @@ func (r *LitRPC) Exchange(args ExchangeArgs, reply *ExchangeReply) error {
 	qc2.Height = dummyqc2.Height
 
 	// TODO.jesus check that initiator and acceptor aren't mixed up
-	err = r.Node.ExchangeChannel(qc1, int64(args.amt1), uint32(args.initiatorIdx), args.Data)
+	err = r.Node.ExchangeChannel(qc1, int64(args.amt1), args.Data)
 	if err != nil {
 		return err
 	}
-	err = r.Node.ExchangeChannel(qc2, int64(args.amt2), uint32(args.acceptorIdx), args.Data)
+	err = r.Node.ExchangeChannel(qc2, int64(args.amt2), args.Data)
 	if err != nil {
 		return err
 	}

@@ -776,6 +776,102 @@ func (nd *LitNode) RevHandler(msg lnutil.RevMsg, qc *Qchan) error {
 
 // ExchangeChannels initiates a state update by setting up HTLC's
 // TODO.jesus
-func (nd LitNode) ExchangeChannel(qc *Qchan, amt int64, senderIdx uint32) error {
+func (nd LitNode) ExchangeChannel(qc *Qchan, amt int64) error {
+	// sanity checks
+	if amt >= 1<<30 {
+		return fmt.Errorf("max send 1G sat (1073741823)")
+	}
+	if amt == 0 {
+		return fmt.Errorf("have to send non-zero amount")
+	}
+
+	// see if channel is busy, error if so, lock if not
+	// lock this channel
+
+	select {
+	case <-qc.ClearToSend:
+	// keep going
+	default:
+		return fmt.Errorf("Channel %d busy", qc.Idx())
+	}
+	// ClearToSend is now empty
+
+	// reload from disk here, after unlock
+	err := nd.ReloadQchanState(qc)
+	if err != nil {
+		// don't clear to send here; something is wrong with the channel
+		return err
+	}
+
+	// check that channel is confirmed, if non-test coin
+	wal, ok := nd.SubWallet[qc.Coin()]
+	if !ok {
+		qc.ClearToSend <- true
+		return fmt.Errorf("Not connected to coin type %d\n", qc.Coin())
+	}
+
+	if !wal.Params().TestCoin && qc.Height < 100 {
+		qc.ClearToSend <- true
+		return fmt.Errorf(
+			"height %d; must wait min 1 conf for non-test coin\n", qc.Height)
+	}
+
+	// perform minOutput checks after reload
+	myNewOutputSize := (qc.State.MyAmt - int64(amt)) - qc.State.Fee
+	theirNewOutputSize := qc.Value - (qc.State.MyAmt - int64(amt)) - qc.State.Fee
+
+	// check if this push would lower my balance below minBal
+	if myNewOutputSize < minOutput {
+		qc.ClearToSend <- true
+		return fmt.Errorf("want to push %s but %s available, %s fee, %s minOutput",
+			lnutil.SatoshiColor(int64(amt)),
+			lnutil.SatoshiColor(qc.State.MyAmt),
+			lnutil.SatoshiColor(qc.State.Fee),
+			lnutil.SatoshiColor(minOutput))
+	}
+	// check if this push is sufficient to get them above minBal
+	if theirNewOutputSize < minOutput {
+		qc.ClearToSend <- true
+		return fmt.Errorf(
+			"pushing %s insufficient; counterparty bal %s fee %s minOutput %s",
+			lnutil.SatoshiColor(int64(amt)),
+			lnutil.SatoshiColor(qc.Value-qc.State.MyAmt),
+			lnutil.SatoshiColor(qc.State.Fee),
+			lnutil.SatoshiColor(minOutput))
+	}
+
+	// if we got here, but channel is not in rest state, try to fix it.
+	if qc.State.Delta != 0 {
+		err = nd.ReSendMsg(qc)
+		if err != nil {
+			qc.ClearToSend <- true
+			return err
+		}
+		qc.ClearToSend <- true
+		return fmt.Errorf("Didn't send.  Recovered though, so try again!")
+	}
+
+	qc.State.Delta = int32(-amt)
+	// save to db with ONLY delta changed
+	err = nd.SaveQchanState(qc)
+	if err != nil {
+		// don't clear to send here; something is wrong with the channel
+		return err
+	}
+	// move unlock to here so that delta is saved before
+
+	err = nd.SendDeltaSig(qc)
+	if err != nil {
+		// don't clear; something is wrong with the network
+		return err
+	}
+
+	fmt.Printf("got pre CTS... \n")
+	// block until clear to send is full again
+	<-qc.ClearToSend
+	fmt.Printf("got post CTS... \n")
+	// since we cleared with that statement, fill it again before returning
+	qc.ClearToSend <- true
+
 	return nil
 }
