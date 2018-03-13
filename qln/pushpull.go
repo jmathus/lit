@@ -5,7 +5,6 @@ import (
 
 	"github.com/adiabat/btcd/wire"
 	"github.com/mit-dci/lit/lnutil"
-	"github.com/mit-dci/lit/qln"
 )
 
 // minOutput is the minimum output amt, post fee.
@@ -87,7 +86,7 @@ Receive Rev for previous state
 */
 
 // HTLC Serialization Method
-func (htlc *qln.HTLC) HTLCToBytes() []byte {
+func (htlc *HTLC) HTLCToBytes() []byte {
 	var b []byte
 
 	// Struct is incoming (4), qchan1 (4), qchan2 (4), exchangeAmountQchan1 (8)
@@ -95,13 +94,9 @@ func (htlc *qln.HTLC) HTLCToBytes() []byte {
 	//
 	// Total Length: 52
 
-	if (htlc.incoming)
-	{
-		boolAsInt uint32 := 1
-	}
-	else
-	{
-		boolAsInt uint32 := 0
+	boolAsInt := uint32(0)
+	if (htlc.incoming) {
+		boolAsInt := uint32(1)
 	}
 
 	b = append(b, lnutil.U32tB(boolAsInt)...)
@@ -117,34 +112,31 @@ func (htlc *qln.HTLC) HTLCToBytes() []byte {
 }
 
 // HTLC Deserialization Method
-func HTLCFromBytes(b []byte) (*qln.HTLC, error) {
+func HTLCFromBytes(b []byte) (*HTLC, error) {
 	if len(b) != 52{
 		return nil, fmt.Errorf("%d bytes, need 52", len(b))
 	}
 
-	htlc := new(qln.HTLC)
+	htlc := new(HTLC)
 
 	// "incoming" Variable Converted
-	if (lnutil.BtU32(b[:4]) == 1)
-	{
-		htlc.incoming := true
-	}
-	else
-	{
-		htlc.incoming := false
+	if (lnutil.BtU32(b[:4]) == 1) {
+		htlc.incoming = true
+	} else {
+		htlc.incoming = false
 	}
 
 	// "qchanIdx1" Variable Converted
-	htlc.qchanIdx1 := lnutil.BtU32(b[4:8])
+	htlc.qchanIdx1 = lnutil.BtU32(b[4:8])
 
 	// "qchanIdx2" Variable Converted
-	htlc.qchanIdx2 := lnutil.BtU32(b[8:12])
+	htlc.qchanIdx2 = lnutil.BtU32(b[8:12])
 
 	// "exchangeAmountQchan1" Variable Converted
-	hltc.exchangeAmountQchan1 := lnutil.BtI64(b[12:20])
+	htlc.exchangeAmountQchan1 = lnutil.BtI64(b[12:20])
 
 	// "exchangeAmountQchan2" Variable Converted
-	hltc.exchangeAmountQchan2 := lnutil.BtI64(b[20:28])
+	htlc.exchangeAmountQchan2 = lnutil.BtI64(b[20:28])
 
 	// "preimage" Variable Converted
 	// copy(htlc.preimage[:], b[16:48])
@@ -153,7 +145,7 @@ func HTLCFromBytes(b []byte) (*qln.HTLC, error) {
 	copy(htlc.rHash[:], b[28:48])
 
 	// "qchan2" Variable Converted
-	htlc.locktime := lnutil.BtU32(b[48:52])
+	htlc.locktime = lnutil.BtU32(b[48:52])
 
 	return htlc, nil
 
