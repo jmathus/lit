@@ -313,19 +313,19 @@ func (lc *litAfClient) Exchange(textArgs []string) error {
 		return fmt.Errorf("need args: exchange chanIdx1 amt1 chanIdx2 amt2 (times) (data)")
 	}
 
-	chanIdx1, err := strconv.Atoi(textArgs[0])
+	chanId1, err := strconv.Atoi(textArgs[0])
 	if err != nil {
 		return err
 	}
-	amt1, err := strconv.Atoi(textArgs[1])
+	amount1, err := strconv.Atoi(textArgs[1])
 	if err != nil {
 		return err
 	}
-	chanIdx2, err := strconv.Atoi(textArgs[2])
+	chanId2, err := strconv.Atoi(textArgs[2])
 	if err != nil {
 		return err
 	}
-	amt2, err := strconv.Atoi(textArgs[3])
+	amount2, err := strconv.Atoi(textArgs[3])
 	if err != nil {
 		return err
 	}
@@ -349,10 +349,10 @@ func (lc *litAfClient) Exchange(textArgs []string) error {
 		}
 	}
 
-	args.chanIdx1 = uint32(chanIdx1)
-	args.amt1 = int64(amt1)
-	args.chanIdx2 = uint32(chanIdx2)
-	args.amt2 = int64(amt2)
+	args.ChanIdx1 = uint32(chanId1)
+	args.Amt1 = int64(amount1)
+	args.ChanIdx2 = uint32(chanId2)
+	args.Amt2 = int64(amount2)
 
 	for times > 0 {
 		err := lc.rpccon.Call("LitRPC.Exchange", args, reply)
@@ -360,7 +360,7 @@ func (lc *litAfClient) Exchange(textArgs []string) error {
 			return err
 		}
 		// TODO.jesus Edit to add currencies used
-		fmt.Fprintf(color.Output, "Exchanged %s at state %s for %s\n", lnutil.SatoshiColor(int64(amt1)), lnutil.White(reply.StateIndex), lnutil.SatoshiColor(int64(amt2)))
+		fmt.Fprintf(color.Output, "Exchanged %s at state %s for %s\n", lnutil.SatoshiColor(int64(amount1)), lnutil.White(reply.StateIndex), lnutil.SatoshiColor(int64(amount2)))
 		times--
 	}
 

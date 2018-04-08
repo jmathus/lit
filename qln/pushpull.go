@@ -89,63 +89,59 @@ Receive Rev for previous state
 func (htlc *HTLC) HTLCToBytes() []byte {
 	var b []byte
 
-	// Struct is incoming (4), qchan1 (4), qchan2 (4), exchangeAmountQchan1 (8)
-	// exchangeAmountQchan2 (8), preimage (20) not included, rHash (20), locktime (4)
+	// Struct is Incoming (4), Qchan1 (4), ExchangeAmountQchan1 (8)
+	// Preimage (20), RHash (20), Locktime (20)
 	//
-	// Total Length: 52
+	// Total Length: 76
 
-	boolAsInt := uint32(0)
-	if (htlc.incoming) {
-		boolAsInt := uint32(1)
+	if (htlc.Incoming) {
+		b = append(b, lnutil.U32tB(uint32(1))...)
+	} else {
+		b = append(b, lnutil.U32tB(uint32(0))...)
 	}
 
-	b = append(b, lnutil.U32tB(boolAsInt)...)
-	b = append(b, lnutil.U32tB(htlc.qchanIdx1)...)
-	b = append(b, lnutil.U32tB(htlc.qchanIdx2)...)
-	b = append(b, lnutil.I64tB(htlc.exchangeAmountQchan1)...)
-	b = append(b, lnutil.I64tB(htlc.exchangeAmountQchan2)...)
-	//b = append(b, htlc.preimage[:]...)
-	b = append(b, htlc.rHash[:]...)
-	b = append(b, lnutil.U32tB(htlc.locktime)...)
+	opbytes := lnutil.OutPointToBytes(htlc.Qchan1)
+	b = append(b, opbytes[:]...)
+	b = append(b, lnutil.I64tB(htlc.ExchangeAmountQchan1)...)
+	b = append(b, lnutil.I32ArrtB(htlc.Preimage[:])...)
+	b = append(b, htlc.RHash[:]...)
+	b = append(b, lnutil.TimetB(htlc.Locktime)...)
 
 	return b
 }
 
 // HTLC Deserialization Method
 func HTLCFromBytes(b []byte) (*HTLC, error) {
-	if len(b) != 52{
-		return nil, fmt.Errorf("%d bytes, need 52", len(b))
+	if len(b) != 76{
+		return nil, fmt.Errorf("%d bytes, need 76", len(b))
 	}
 
 	htlc := new(HTLC)
 
-	// "incoming" Variable Converted
+	// "Incoming" Variable Converted
 	if (lnutil.BtU32(b[:4]) == 1) {
-		htlc.incoming = true
+		htlc.Incoming = true
 	} else {
-		htlc.incoming = false
+		htlc.Incoming = false
 	}
 
-	// "qchanIdx1" Variable Converted
-	htlc.qchanIdx1 = lnutil.BtU32(b[4:8])
+	// "Qchan1" Variable Converted
+	var opArr [36]byte
+	copy(opArr[:], b[4:40])
+	op := lnutil.OutPointFromBytes(opArr)
+	htlc.Qchan1 = *op
 
-	// "qchanIdx2" Variable Converted
-	htlc.qchanIdx2 = lnutil.BtU32(b[8:12])
+	// "ExchangeAmountQchan1" Variable Converted
+	htlc.ExchangeAmountQchan1 = lnutil.BtI64(b[40:48])
 
-	// "exchangeAmountQchan1" Variable Converted
-	htlc.exchangeAmountQchan1 = lnutil.BtI64(b[12:20])
+	// "Preimage" Variable Converted
+	copy(htlc.Preimage[:], lnutil.BtI32Arr(b[48:68]))
 
-	// "exchangeAmountQchan2" Variable Converted
-	htlc.exchangeAmountQchan2 = lnutil.BtI64(b[20:28])
+	// "RHash" Variable Converted
+	copy(htlc.RHash[:], b[68:88])
 
-	// "preimage" Variable Converted
-	// copy(htlc.preimage[:], b[16:48])
-
-	// "rHash" Variable Converted
-	copy(htlc.rHash[:], b[28:48])
-
-	// "qchan2" Variable Converted
-	htlc.locktime = lnutil.BtU32(b[48:52])
+	// "Locktime" Variable Converted
+	htlc.Locktime = lnutil.BtTime(b[88:108])
 
 	return htlc, nil
 
@@ -330,7 +326,7 @@ func (nd *LitNode) SendDeltaSig(q *Qchan) error {
 		return err
 	}
 
-	outMsg := lnutil.NewDeltaSigMsg(q.Peer(), q.Op, -q.State.Delta, sig)
+	outMsg := lnutil.NewDeltaSigMsg(q.Peer(), q.Op, -q.State.Delta, sig, q.State.Data)
 	nd.OmniOut <- outMsg
 
 	return nil
@@ -768,7 +764,7 @@ func (nd *LitNode) RevHandler(msg lnutil.RevMsg, qc *Qchan) error {
 
 // ExchangeChannels initiates a state update by setting up HTLC's
 // TODO.jesus
-func (nd LitNode) ExchangeChannel(qc *Qchan, amt int64) error {
+func (nd LitNode) ExchangeHTLC(qc *Qchan, amt uint32, htlc *HTLC, incoming bool) error {
 	// sanity checks
 	if amt >= 1<<30 {
 		return fmt.Errorf("max send 1G sat (1073741823)")
@@ -808,9 +804,17 @@ func (nd LitNode) ExchangeChannel(qc *Qchan, amt int64) error {
 			"height %d; must wait min 1 conf for non-test coin\n", qc.Height)
 	}
 
+	// TODO.jesus Assign the HTLC to the State
+	qc.State.currentHTLC = htlc
+
 	// perform minOutput checks after reload
 	myNewOutputSize := (qc.State.MyAmt - int64(amt)) - qc.State.Fee
 	theirNewOutputSize := qc.Value - (qc.State.MyAmt - int64(amt)) - qc.State.Fee
+	// If incoming, overwrite with correct amounts
+	if (incoming) {
+		myNewOutputSize = qc.State.MyAmt + int64(amt) + qc.State.Fee
+		theirNewOutputSize = qc.Value - (qc.State.MyAmt - int64(amt)) - qc.State.Fee
+	}
 
 	// check if this push would lower my balance below minBal
 	if myNewOutputSize < minOutput {
@@ -843,7 +847,11 @@ func (nd LitNode) ExchangeChannel(qc *Qchan, amt int64) error {
 		return fmt.Errorf("Didn't send.  Recovered though, so try again!")
 	}
 
-	qc.State.Delta = int32(-amt)
+	if (incoming) {
+		qc.State.Delta = int32(amt)
+	} else {
+		qc.State.Delta = int32(-amt)
+	}
 	// save to db with ONLY delta changed
 	err = nd.SaveQchanState(qc)
 	if err != nil {
@@ -852,6 +860,7 @@ func (nd LitNode) ExchangeChannel(qc *Qchan, amt int64) error {
 	}
 	// move unlock to here so that delta is saved before
 
+	// TODO.jesus figure out what to do from SendDeltaSig on
 	err = nd.SendDeltaSig(qc)
 	if err != nil {
 		// don't clear; something is wrong with the network

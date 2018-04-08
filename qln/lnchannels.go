@@ -3,12 +3,14 @@ package qln
 import (
 	"bytes"
 	"fmt"
+	"time"
 
 	"github.com/mit-dci/lit/elkrem"
 	"github.com/mit-dci/lit/lnutil"
 	"github.com/mit-dci/lit/portxo"
 
 	"github.com/adiabat/btcd/btcec"
+	"github.com/adiabat/btcd/wire"
 	"github.com/adiabat/btcd/chaincfg/chainhash"
 )
 
@@ -82,21 +84,21 @@ type StatCom struct {
 // Hashed Timelock Contract for atomic cross-chain swaps
 type HTLC struct {
 	/* If the payment is incoming or outgoing (recipient or sender) */
-	incoming bool
+	Incoming bool
 	/* HTLC participants channel with currency 1 */
-	qchanIdx1 uint32
+	Qchan1 wire.OutPoint
 	/* HTLC participants channel with currency 2 */
-	qchanIdx2 uint32
+	//QchanIdx2 uint32
 	/* Amount being exchanged in channel qchan1*/
-	exchangeAmountQchan1 int64
+	ExchangeAmountQchan1 int64
 	/* Amount being exchanged in channel qchan1*/
-	exchangeAmountQchan2 int64
+	//ExchangeAmountQchan2 int64
 	/* The preimage used to lock the initiator's, how does this work? tx */
-	// preimage [32]byte
+	Preimage []int32
 	/* The hash of the preimage used to lock the initiator's tx */
-	rHash [20]byte
+	RHash [20]byte
 	/* Amount of time before the HTLC expires */
-	locktime uint32
+	Locktime time.Time
 };
 
 // QCloseData is the output resulting from an un-cooperative close

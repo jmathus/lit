@@ -4,9 +4,90 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
+	"time"
+	"strconv"
 )
 
 // I shouldn't even have to write these...
+
+// time.Time to 20 bytes. Always works.
+func TimetB(givenTime time.Time) []byte {
+	givenTimeString := givenTime.String()
+
+  timeRune := []rune(givenTimeString)
+  tempRune1 := append(timeRune[0:4],timeRune[5:7]...)
+  tempRune2 := append(tempRune1[:],timeRune[8:10]...)
+  tempRune3 := append(tempRune2[:],timeRune[11:13]...)
+  tempRune4 := append(tempRune3[:],timeRune[14:16]...)
+  tempRune5 := append(tempRune4[:],timeRune[17:19]...)
+  tempRune6 := append(tempRune5[:],timeRune[20:26]...)
+  timeBytes := []byte(string(tempRune6))
+
+  return timeBytes
+}
+
+// bytes to time.Time. Always works.
+func BtTime(BArr []byte) time.Time {
+	newTimeString := string(BArr[:])
+  newTimeRune := []rune(newTimeString)
+
+  year, err := strconv.Atoi(string(newTimeRune[0:4]))
+  if err != nil {
+    fmt.Println(err)
+  }
+  month, err := strconv.Atoi(string(newTimeRune[4:6]))
+  if err != nil {
+    fmt.Println(err)
+  }
+  day, err := strconv.Atoi(string(newTimeRune[6:8]))
+  if err != nil {
+    fmt.Println(err)
+  }
+  hour, err := strconv.Atoi(string(newTimeRune[8:10]))
+  if err != nil {
+    fmt.Println(err)
+  }
+  minute, err := strconv.Atoi(string(newTimeRune[10:12]))
+  if err != nil {
+    fmt.Println(err)
+  }
+  second, err := strconv.Atoi(string(newTimeRune[12:14]))
+  if err != nil {
+    fmt.Println(err)
+  }
+  nanosecond, err := strconv.Atoi(string(newTimeRune[14:20]))
+  if err != nil {
+    fmt.Println(err)
+  }
+  location := time.Local
+  byteTime := time.Date(year, time.Month(month) , day, hour, minute, second, nanosecond, location)
+
+	return byteTime
+}
+
+// []int32 to 20 bytes. Always works.
+func I32ArrtB(intArr []int32) []byte {
+  var byteArr []byte
+
+  for i := range intArr {
+    var buf bytes.Buffer
+  	binary.Write(&buf, binary.BigEndian, intArr[i])
+    byteArr = append(byteArr, buf.Bytes()[3])
+  }
+
+  return byteArr
+}
+
+// bytes to []int32. Always works.
+func BtI32Arr(BArr []byte) []int32 {
+  var dataConverted []int32
+
+  for i := range BArr {
+    dataConverted = append(dataConverted, int32(uint32(BArr[i])))
+  }
+
+  return dataConverted
+}
 
 // int32 to 4 bytes.  Always works.
 func I32tB(i int32) []byte {

@@ -3,6 +3,9 @@ package litrpc
 import (
 	"fmt"
 	"log"
+	"time"
+	"math/rand"
+  "crypto/sha1"
 
 	"github.com/adiabat/btcutil"
 	"github.com/mit-dci/lit/portxo"
@@ -206,7 +209,8 @@ func (r *LitRPC) Push(args PushArgs, reply *PushReply) error {
 	// to the Node.Func() calls.  For now though, set the height here...
 	qc.Height = dummyqc.Height
 
-	err = r.Node.PushChannel(qc, uint32(args.Amt), args.Data)
+	// TODO.jesus? Add Data into PushChannel(..., args.Data)??? was there before
+	err = r.Node.PushChannel(qc, uint32(args.Amt))
 	if err != nil {
 		return err
 	}
@@ -332,10 +336,10 @@ func (r *LitRPC) DumpPrivs(args NoArgs, reply *DumpReply) error {
 // ------------------------- Exchange
 // TODO.jesus
 type ExchangeArgs struct {
-	chanIdx1 uint32
-	amt1     int64
-	chanIdx2 uint32
-	amt2     int64
+	ChanIdx1 uint32
+	Amt1     int64
+	ChanIdx2 uint32
+	Amt2     int64
 	Data    [32]byte
 }
 type ExchangeReply struct {
@@ -345,35 +349,35 @@ type ExchangeReply struct {
 // TODO.jesus
 func (r *LitRPC) Exchange(args ExchangeArgs, reply *ExchangeReply) error {
 
-	if args.amt1 > 100000000 || args.amt1 < 1 {
+	if args.Amt1 > 100000000 || args.Amt1 < 1 {
 		return fmt.Errorf(
-			"can't exchange %d max is 1 coin (100000000), min is 1", args.amt1)
+			"can't exchange %d max is 1 coin (100000000), min is 1", args.Amt1)
 	}
 
-	if args.amt2 > 100000000 || args.amt2 < 1 {
+	if args.Amt2 > 100000000 || args.Amt2 < 1 {
 		return fmt.Errorf(
-			"can't exchange %d max is 1 coin (100000000), min is 1", args.amt2)
+			"can't exchange %d max is 1 coin (100000000), min is 1", args.Amt2)
 	}
 
-	fmt.Printf("Exchanged %d on chan %d for %d on chan %d\n", args.amt1, args.chanIdx1, args.amt2, args.chanIdx2)
+	fmt.Printf("Exchanged %d on chan %d for %d on chan %d\n", args.Amt1, args.ChanIdx1, args.Amt2, args.ChanIdx2)
 
 	// load the whole channel from disk just to see who the peer is
 	// (pretty inefficient)
 	// TODO.jesus.question how to know if peer is in the right direction? is chanIdx unique for each party?
-	dummyqc1, err := r.Node.GetQchanByIdx(args.chanIdx1)
+	dummyqc1, err := r.Node.GetQchanByIdx(args.ChanIdx1)
 	if err != nil {
 		return err
 	}
-	dummyqc2, err := r.Node.GetQchanByIdx(args.chanIdx2)
+	dummyqc2, err := r.Node.GetQchanByIdx(args.ChanIdx2)
 	if err != nil {
 		return err
 	}
 	// see if channel is closed and error early
 	if dummyqc1.CloseData.Closed {
-		return fmt.Errorf("Can't push; channel %d closed", args.chanIdx1)
+		return fmt.Errorf("Can't push; channel %d closed", args.ChanIdx1)
 	}
 	if dummyqc2.CloseData.Closed {
-		return fmt.Errorf("Can't push; channel %d closed", args.chanIdx2)
+		return fmt.Errorf("Can't push; channel %d closed", args.ChanIdx2)
 	}
 
 	// but we want to reference the qc that's already in ram
@@ -397,7 +401,7 @@ func (r *LitRPC) Exchange(args ExchangeArgs, reply *ExchangeReply) error {
 
 	if qc1.CloseData.Closed {
 		return fmt.Errorf("Channel %d already closed by tx %s",
-			args.chanIdx1, qc1.CloseData.CloseTxid.String())
+			args.ChanIdx1, qc1.CloseData.CloseTxid.String())
 	}
 
 	// Redo for other channel
@@ -418,7 +422,7 @@ func (r *LitRPC) Exchange(args ExchangeArgs, reply *ExchangeReply) error {
 
 	if qc2.CloseData.Closed {
 		return fmt.Errorf("Channel %d already closed by tx %s",
-			args.chanIdx2, qc2.CloseData.CloseTxid.String())
+			args.ChanIdx2, qc2.CloseData.CloseTxid.String())
 	}
 
 	// TODO this is a bad place to put it -- litRPC should be a thin layer
@@ -426,17 +430,72 @@ func (r *LitRPC) Exchange(args ExchangeArgs, reply *ExchangeReply) error {
 	qc1.Height = dummyqc1.Height
 	qc2.Height = dummyqc2.Height
 
-	// TODO.jesus check that initiator and acceptor aren't mixed up
-	err = r.Node.ExchangeChannel(qc1, int64(args.amt1), args.Data)
+	htlc1, preimage := makeHTLCNoPreimage(qc1, uint32(args.Amt1))
+	htlc2 := makeHTLCWithPreimage(qc2, uint32(args.Amt2), preimage)
+
+	// TODO.jesus? Add Data into ExchangeChannel(..., args.Data)???
+	// One ExchangeChannel call for the incoming amount, one for the outgoing amount
+	err = r.Node.ExchangeHTLC(qc1, uint32(args.Amt1), htlc1, false)
 	if err != nil {
 		return err
 	}
-	err = r.Node.ExchangeChannel(qc2, int64(args.amt2), args.Data)
+	err = r.Node.ExchangeHTLC(qc2, uint32(args.Amt2), htlc2, true)
 	if err != nil {
 		return err
 	}
 
 	reply.StateIndex = qc1.State.StateIdx
 	reply.StateIndex = qc2.State.StateIdx
+
+	// TODO.jesus? Implement OpenHTLC() using preimage from above
+
 	return nil
+}
+
+func makeHTLCNoPreimage(qc *qln.Qchan, amt uint32) (*qln.HTLC, []int32) {
+	htlc := new(qln.HTLC)
+
+	htlc.Incoming = false
+	htlc.Qchan1 = qc.Op
+	htlc.ExchangeAmountQchan1 = int64(amt)
+	var newPreimage []int32
+	htlc.Locktime = time.Now().Local().Add(time.Minute*1)
+
+	// Generate a random 20 byte preimage and its hash
+	var characters = []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890")
+	rand.Seed(time.Now().UTC().UnixNano())
+
+	runeArr := make([]rune, 20)
+	for i := range runeArr {
+			runeArr[i] = characters[rand.Intn(len(characters))]
+	}
+	newPreimage = runeArr
+
+	hash := sha1.New()
+	hash.Write([]byte(string(newPreimage)))
+	preimageRHash := hash.Sum(nil)
+
+	copy(htlc.Preimage[:], newPreimage)
+	copy(htlc.RHash[:], preimageRHash)
+
+	return htlc, newPreimage
+}
+
+func makeHTLCWithPreimage(qc *qln.Qchan, amt uint32, preimage []int32) *qln.HTLC {
+	htlc := new(qln.HTLC)
+
+	htlc.Incoming = true
+	htlc.Qchan1 = qc.Op
+	htlc.ExchangeAmountQchan1 = int64(amt)
+	htlc.Locktime = time.Now().Local().Add(time.Minute*1)
+
+	// Generate the given preimage's hash
+	hash := sha1.New()
+	hash.Write([]byte(string(preimage)))
+	preimageRHash := hash.Sum(nil)
+
+	copy(htlc.Preimage[:], preimage)
+	copy(htlc.RHash[:], preimageRHash)
+
+	return htlc
 }
