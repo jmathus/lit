@@ -57,11 +57,18 @@ var historyCommand = &Command{
 
 // TODO.jesus
 var exchangeCommand = &Command{
-	Format: fmt.Sprintf("%s%s%s%s\n", lnutil.White("exchange"), lnutil.ReqColor("channel idx one", "amount sent", "channel idx two", "amount requested"), lnutil.OptColor("times"), lnutil.OptColor("data")),
-	Description: fmt.Sprintf("%s\n%s\n%s\n",
-		"Exchange the amounts proposed on the two different channels listed (with each channel ideally having a different currency).",
-		"Optionally, the exchange operation can be accepted by the receiver to finalize the exchange through HTLC mechanisms."),
+	Format: fmt.Sprintf("%s%s\n", lnutil.White("exchange"), lnutil.ReqColor("channel idx one", "amount sent", "channel idx two", "amount requested")),
+	Description: fmt.Sprintf("%s\n%s\n",
+		"Exchange the amounts proposed on the two different channels listed (with each channel ideally having a different currency)",
+		"Optionally, the exchange operation can be accepted by the receiver to finalize the exchange through HTLC mechanisms"),
 	ShortDescription: "Send an exchange proposal for the given amounts (in different currencies) to the other party on the two given channels.\n",
+}
+
+// TODO.jesus
+var priceCommand = &Command{
+	Format: fmt.Sprintf("%s%s\n", lnutil.White("price"), lnutil.ReqColor("cryptocurrency name")),
+	Description: fmt.Sprintf("%s\n", "Returns the current market price of the desired cryptocurrency"),
+	ShortDescription: "Returns the current market price of the desired cryptocurrency\n",
 }
 
 func (lc *litAfClient) History(textArgs []string) error {
@@ -363,6 +370,25 @@ func (lc *litAfClient) Exchange(textArgs []string) error {
 		fmt.Fprintf(color.Output, "Exchanged %s at state %s for %s\n", lnutil.SatoshiColor(int64(amount1)), lnutil.White(reply.StateIndex), lnutil.SatoshiColor(int64(amount2)))
 		times--
 	}
+
+	return nil
+}
+
+// TODO.jesus
+// A shell command that returns the price of the desired cryptocurrency
+func (lc *litAfClient) Price(textArgs []string) error {
+	if len(textArgs) > 0 && textArgs[0] == "-h" {
+		fmt.Fprintf(color.Output, priceCommand.Format)
+		fmt.Fprintf(color.Output, priceCommand.Description)
+		return nil
+	}
+
+	if len(textArgs) < 1 {
+		return fmt.Errorf("need args: price currencyName")
+	}
+
+	currencyName := textArgs[0]
+	fmt.Printf("%s: %s\n", currencyName, getCryptocurrencyPrice(currencyName))
 
 	return nil
 }

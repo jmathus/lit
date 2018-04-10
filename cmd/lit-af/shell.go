@@ -197,6 +197,16 @@ func (lc *litAfClient) Shellparse(cmdslice []string) error {
 		return nil
 	}
 
+	// TODO.jesus
+	// Gives the price of the desired currency
+	if cmd == "price" {
+		err = lc.Price(args)
+		if err != nil {
+			fmt.Fprintf(color.Output, "price error: %s\n", err)
+		}
+		return nil
+	}
+
 	fmt.Fprintf(color.Output, "Command not recognized. type help for command list.\n")
 	return nil
 }
@@ -377,6 +387,7 @@ func (lc *litAfClient) Help(textArgs []string) error {
 		fmt.Fprintf(color.Output, "%s\t%s", fundCommand.Format, fundCommand.ShortDescription)
 		fmt.Fprintf(color.Output, "%s\t%s", pushCommand.Format, pushCommand.ShortDescription)
 		fmt.Fprintf(color.Output, "%s\t%s", exchangeCommand.Format, exchangeCommand.ShortDescription)
+		fmt.Fprintf(color.Output, "%s\t%s", priceCommand.Format, priceCommand.ShortDescription)
 		fmt.Fprintf(color.Output, "%s\t%s", closeCommand.Format, closeCommand.ShortDescription)
 		fmt.Fprintf(color.Output, "%s\t%s", breakCommand.Format, breakCommand.ShortDescription)
 		fmt.Fprintf(color.Output, "%s\t%s", historyCommand.Format, historyCommand.ShortDescription)
