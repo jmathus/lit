@@ -198,11 +198,31 @@ func (lc *litAfClient) Shellparse(cmdslice []string) error {
 	}
 
 	// TODO.jesus
+	// Sends currency exchange response (either accept or decline)
+	if cmd == "respond" {
+		err = lc.Respond(args)
+		if err != nil {
+			fmt.Fprintf(color.Output, "respond error: %s\n", err)
+		}
+		return nil
+	}
+
+	// TODO.jesus
 	// Gives the price of the desired currency
 	if cmd == "price" {
 		err = lc.Price(args)
 		if err != nil {
 			fmt.Fprintf(color.Output, "price error: %s\n", err)
+		}
+		return nil
+	}
+
+	// TODO.jesus
+	// Compares the prices of the two desired currencies
+	if cmd == "compare" {
+		err = lc.Compare(args)
+		if err != nil {
+			fmt.Fprintf(color.Output, "compare error: %s\n", err)
 		}
 		return nil
 	}
@@ -387,7 +407,9 @@ func (lc *litAfClient) Help(textArgs []string) error {
 		fmt.Fprintf(color.Output, "%s\t%s", fundCommand.Format, fundCommand.ShortDescription)
 		fmt.Fprintf(color.Output, "%s\t%s", pushCommand.Format, pushCommand.ShortDescription)
 		fmt.Fprintf(color.Output, "%s\t%s", exchangeCommand.Format, exchangeCommand.ShortDescription)
+		fmt.Fprintf(color.Output, "%s\t%s", respondCommand.Format, respondCommand.ShortDescription)
 		fmt.Fprintf(color.Output, "%s\t%s", priceCommand.Format, priceCommand.ShortDescription)
+		fmt.Fprintf(color.Output, "%s\t%s", compareCommand.Format, compareCommand.ShortDescription)
 		fmt.Fprintf(color.Output, "%s\t%s", closeCommand.Format, closeCommand.ShortDescription)
 		fmt.Fprintf(color.Output, "%s\t%s", breakCommand.Format, breakCommand.ShortDescription)
 		fmt.Fprintf(color.Output, "%s\t%s", historyCommand.Format, historyCommand.ShortDescription)

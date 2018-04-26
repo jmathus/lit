@@ -128,6 +128,9 @@ type LitNode struct {
 
 	ChannelMap map[[20]byte][]lnutil.LinkMsg
 	AdvTimeout *time.Ticker
+
+	// The latest exchange request existing between two nodes, if any exists
+	CurrentRequest *Request
 }
 
 type RemotePeer struct {

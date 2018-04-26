@@ -4,6 +4,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"strconv"
+	"unicode"
 
 	"github.com/fatih/color"
 	"github.com/mit-dci/lit/litrpc"
@@ -65,10 +66,24 @@ var exchangeCommand = &Command{
 }
 
 // TODO.jesus
+var respondCommand = &Command{
+	Format: fmt.Sprintf("%s%s\n", lnutil.White("respond"), lnutil.ReqColor("YES/NO", "request id")),
+	Description: fmt.Sprintf("%s\n", "Accepts or declines the corresponding exchange request as specified by the requestID"),
+	ShortDescription: "Sends a response to the corresponding exchange request\n",
+}
+
+// TODO.jesus
 var priceCommand = &Command{
 	Format: fmt.Sprintf("%s%s\n", lnutil.White("price"), lnutil.ReqColor("cryptocurrency name")),
 	Description: fmt.Sprintf("%s\n", "Returns the current market price of the desired cryptocurrency"),
 	ShortDescription: "Returns the current market price of the desired cryptocurrency\n",
+}
+
+// TODO.jesus
+var compareCommand = &Command{
+	Format: fmt.Sprintf("%s%s\n", lnutil.White("compare"), lnutil.ReqColor("first cryptocurrency name", "second cryptocurrency name")),
+	Description: fmt.Sprintf("%s\n", "Returns the price of the second currency compared to the first"),
+	ShortDescription: "Returns the price of the second currency in relation to one unit of the first currency\n",
 }
 
 func (lc *litAfClient) History(textArgs []string) error {
@@ -375,6 +390,39 @@ func (lc *litAfClient) Exchange(textArgs []string) error {
 }
 
 // TODO.jesus
+// A shell command that responds to an exchange request either accepting or declining
+func (lc *litAfClient) Respond(textArgs []string) error {
+	if len(textArgs) > 0 && textArgs[0] == "-h" {
+		fmt.Fprintf(color.Output, respondCommand.Format)
+		fmt.Fprintf(color.Output, respondCommand.Description)
+		return nil
+	}
+
+	if len(textArgs) < 2 {
+		return fmt.Errorf("need args: respond YES/NO requestID")
+	}
+
+	args := new(litrpc.RespondArgs)
+	reply := new(litrpc.RespondReply)
+
+	args.Yesno = textArgs[0]
+	args.RequestID = textArgs[1]
+
+	times := int(1)
+	for times > 0 {
+		err := lc.rpccon.Call("LitRPC.Respond", args, reply)
+		if err != nil {
+			return err
+		}
+		// TODO.jesus Edit to add currencies used
+		fmt.Fprintf(color.Output, "Respond %s to exchange request: %s at state %s\n", lnutil.White(textArgs[0]), lnutil.White(textArgs[1]), lnutil.White(reply.StateIndex))
+		times--
+	}
+
+	return nil
+}
+
+// TODO.jesus
 // A shell command that returns the price of the desired cryptocurrency
 func (lc *litAfClient) Price(textArgs []string) error {
 	if len(textArgs) > 0 && textArgs[0] == "-h" {
@@ -387,8 +435,58 @@ func (lc *litAfClient) Price(textArgs []string) error {
 		return fmt.Errorf("need args: price currencyName")
 	}
 
-	currencyName := textArgs[0]
+	runeArr := []rune(textArgs[0])
+  currencyName := ""
+
+  for i := range runeArr {
+    if i == 0 {
+      currencyName += string(unicode.ToUpper(runeArr[i]))
+    } else{
+      currencyName += string(unicode.ToLower(runeArr[i]))
+    }
+  }
+
 	fmt.Printf("%s: %s\n", currencyName, getCryptocurrencyPrice(currencyName))
+
+	return nil
+}
+
+// TODO.jesus
+// A shell command that returns the price of the desired first cryptocurrency compared to the second
+func (lc *litAfClient) Compare(textArgs []string) error {
+	if len(textArgs) > 0 && textArgs[0] == "-h" {
+		fmt.Fprintf(color.Output, compareCommand.Format)
+		fmt.Fprintf(color.Output, compareCommand.Description)
+		return nil
+	}
+
+	if len(textArgs) < 2 {
+		return fmt.Errorf("need args: compare currencyName1 currencyName2")
+	}
+
+	runeArr1 := []rune(textArgs[0])
+  currencyName1 := ""
+
+  for i := range runeArr1 {
+    if i == 0 {
+      currencyName1 += string(unicode.ToUpper(runeArr1[i]))
+    } else{
+      currencyName1 += string(unicode.ToLower(runeArr1[i]))
+    }
+  }
+
+	runeArr2 := []rune(textArgs[1])
+  currencyName2 := ""
+
+  for i := range runeArr2 {
+    if i == 0 {
+      currencyName2 += string(unicode.ToUpper(runeArr2[i]))
+    } else{
+      currencyName2 += string(unicode.ToLower(runeArr2[i]))
+    }
+  }
+
+	fmt.Println(getCryptocurrencyExchangeRate(currencyName1, currencyName2))
 
 	return nil
 }

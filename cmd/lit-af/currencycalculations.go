@@ -1,9 +1,11 @@
 package main
 
 import ("strings"
+  "fmt"
   "unicode"
   "net/http"
   "io/ioutil"
+  "strconv"
   "log")
 
 func getCryptocurrencyPrice(desiredCurrency string) string {
@@ -65,4 +67,29 @@ func getCryptocurrencyPrice(desiredCurrency string) string {
   }
 
   return "None Available"
+}
+
+func getCryptocurrencyExchangeRate(desiredCurrency1 string, desiredCurrency2 string) string {
+  if (desiredCurrency1 == "None") || (desiredCurrency2 == "None") {
+    return "None"
+  }
+  value1String := strings.Join(strings.Split(getCryptocurrencyPrice(desiredCurrency1), ","), "")
+  value2String := strings.Join(strings.Split(getCryptocurrencyPrice(desiredCurrency2), ","), "")
+
+  value1, err1 := strconv.ParseFloat(value1String, 64)
+  value2, err2 := strconv.ParseFloat(value2String, 64)
+  if err1 != nil {
+    fmt.Println(err1)
+    return "Error"
+  }
+  if err2 != nil {
+    fmt.Println(err2)
+    return "Error"
+  }
+
+  conversion := value1/value2
+  conversionString := strconv.FormatFloat(conversion, 'f', 2, 32)
+  stringValue := "Exchange rate is about 1 " + desiredCurrency1 + " for " + conversionString + " " + desiredCurrency2
+
+  return stringValue
 }

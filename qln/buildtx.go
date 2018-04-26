@@ -117,7 +117,7 @@ func (q *Qchan) BuildStateTx(mine bool) (*wire.MsgTx, error) {
 	}
 
 	var fancyAmt, pkhAmt, theirAmt int64 // output amounts
-	var revPub, timePub [33]byte         // pubkeys
+	var revPub, timePub, htlcPubMine, htlcPubTheirs [33]byte         // pubkeys
 	var pkhPub [33]byte                  // the simple output's pub key hash
 
 	fee := s.Fee // fixed fee for now
@@ -139,8 +139,10 @@ func (q *Qchan) BuildStateTx(mine bool) (*wire.MsgTx, error) {
 
 		// TODO.jesus
 		// probably how to make the pubkeys for HTLC
-		//		htlcPubMine := timePub
-		//		htlcPubTheirs := lnutil.AddPubsEZ(q.TheirHAKDBase, s.ElkPoint)
+		// if (s.CurrentHTLC.ExchangeAmount != 0) {
+		// 	htlcPubMine := timePub
+		// 	htlcPubTheirs := lnutil.AddPubsEZ(q.TheirHAKDBase, s.ElkPoint)
+		// }
 
 		pkhPub = q.TheirRefundPub
 
@@ -160,8 +162,10 @@ func (q *Qchan) BuildStateTx(mine bool) (*wire.MsgTx, error) {
 
 		// TODO.jesus
 		// probably how to make the pubkeys for HTLC
-		//		htlcPubMine := lnutil.AddPubsEZ(q.MyHAKDBase, curElk)
-		//		htlcPubTheirs := timePub
+		// if (s.CurrentHTLC.ExchangeAmount != 0) {
+		// 	htlcPubMine := lnutil.AddPubsEZ(q.MyHAKDBase, curElk)
+		// 	htlcPubTheirs := timePub
+		// }
 
 		// PKH output
 		pkhPub = q.MyRefundPub
@@ -187,9 +191,6 @@ func (q *Qchan) BuildStateTx(mine bool) (*wire.MsgTx, error) {
 	// now that everything is chosen, build fancy script and pkh script
 	fancyScript := lnutil.CommitScript(revPub, timePub, q.Delay)
 	pkhScript := lnutil.DirectWPKHScript(pkhPub) // p2wpkh-ify
-	// TODO.jesus
-	// also create an HTLC script here
-	// htlcScript := lnutil.???
 
 	fmt.Printf("> made SH script, state %d\n", s.StateIdx)
 	fmt.Printf("\t revPub %x timeout pub %x \n", revPub, timePub)
@@ -202,9 +203,6 @@ func (q *Qchan) BuildStateTx(mine bool) (*wire.MsgTx, error) {
 	// create txouts by assigning amounts
 	outFancy := wire.NewTxOut(fancyAmt, fancyScript)
 	outPKH := wire.NewTxOut(pkhAmt, pkhScript)
-	// TODO.jesus
-	// also make htlc output here
-	// outHTLC := wire.NewTxOut(htlcAmt, htlcScript)
 
 	fmt.Printf("\tcombined refund %x, pkh %x\n", pkhPub, outPKH.PkScript)
 
@@ -216,6 +214,23 @@ func (q *Qchan) BuildStateTx(mine bool) (*wire.MsgTx, error) {
 	}
 	if pkhAmt != 0 {
 		tx.AddTxOut(outPKH)
+	}
+	// TODO.jesus
+	// make htlc output here
+	// also create an HTLC script here, add in the absdelay and reldelay, arbitrary 100000 for now
+	// add that output to the tx
+	if (s.CurrentHTLC.ExchangeAmount != 0) {
+		curElk, err := q.ElkPoint(false, q.State.StateIdx)
+		if err != nil {
+			return nil, err
+		}
+		// TODO.jesus? Is this right? It ended up being the same when I moved it down here
+		htlcPubMine = lnutil.AddPubsEZ(q.MyHAKDBase, curElk)
+		htlcPubTheirs = lnutil.AddPubsEZ(q.TheirHAKDBase, s.ElkPoint)
+
+		htlcScript := lnutil.SenderHTLCScript(s.CurrentHTLC.RHash, s.CurrentHTLC.RHash, htlcPubTheirs, htlcPubMine, 10000, 10000)
+		outHTLC := wire.NewTxOut(s.CurrentHTLC.ExchangeAmount, htlcScript)
+		tx.AddTxOut(outHTLC)
 	}
 
 	if len(tx.TxOut) < 1 {

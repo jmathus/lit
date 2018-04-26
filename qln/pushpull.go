@@ -85,68 +85,6 @@ Receive Rev for previous state
 
 */
 
-// HTLC Serialization Method
-func (htlc *HTLC) HTLCToBytes() []byte {
-	var b []byte
-
-	// Struct is Incoming (4), Qchan1 (4), ExchangeAmountQchan1 (8)
-	// Preimage (20), RHash (20), Locktime (20)
-	//
-	// Total Length: 76
-
-	if (htlc.Incoming) {
-		b = append(b, lnutil.U32tB(uint32(1))...)
-	} else {
-		b = append(b, lnutil.U32tB(uint32(0))...)
-	}
-
-	opbytes := lnutil.OutPointToBytes(htlc.Qchan1)
-	b = append(b, opbytes[:]...)
-	b = append(b, lnutil.I64tB(htlc.ExchangeAmountQchan1)...)
-	b = append(b, lnutil.I32ArrtB(htlc.Preimage[:])...)
-	b = append(b, htlc.RHash[:]...)
-	b = append(b, lnutil.TimetB(htlc.Locktime)...)
-
-	return b
-}
-
-// HTLC Deserialization Method
-func HTLCFromBytes(b []byte) (*HTLC, error) {
-	if len(b) != 76{
-		return nil, fmt.Errorf("%d bytes, need 76", len(b))
-	}
-
-	htlc := new(HTLC)
-
-	// "Incoming" Variable Converted
-	if (lnutil.BtU32(b[:4]) == 1) {
-		htlc.Incoming = true
-	} else {
-		htlc.Incoming = false
-	}
-
-	// "Qchan1" Variable Converted
-	var opArr [36]byte
-	copy(opArr[:], b[4:40])
-	op := lnutil.OutPointFromBytes(opArr)
-	htlc.Qchan1 = *op
-
-	// "ExchangeAmountQchan1" Variable Converted
-	htlc.ExchangeAmountQchan1 = lnutil.BtI64(b[40:48])
-
-	// "Preimage" Variable Converted
-	copy(htlc.Preimage[:], lnutil.BtI32Arr(b[48:68]))
-
-	// "RHash" Variable Converted
-	copy(htlc.RHash[:], b[68:88])
-
-	// "Locktime" Variable Converted
-	htlc.Locktime = lnutil.BtTime(b[88:108])
-
-	return htlc, nil
-
-}
-
 // example message struct
 type SigRevMsg struct {
 	Op    wire.OutPoint
@@ -405,7 +343,7 @@ func (nd *LitNode) DeltaSigHandler(msg lnutil.DeltaSigMsg, qc *Qchan) error {
 
 	// they have to actually send you money
 	if incomingDelta < 1 {
-		return fmt.Errorf("DeltaSigHandler err: delta %d", incomingDelta)
+			return fmt.Errorf("DeltaSigHandler err: delta %d", incomingDelta)
 	}
 
 	// perform minOutput check
@@ -759,120 +697,5 @@ func (nd *LitNode) RevHandler(msg lnutil.RevMsg, qc *Qchan) error {
 	qc.ClearToSend <- true
 
 	fmt.Printf("REV OK, state %d all clear.\n", qc.State.StateIdx)
-	return nil
-}
-
-// ExchangeChannels initiates a state update by setting up HTLC's
-// TODO.jesus
-func (nd LitNode) ExchangeHTLC(qc *Qchan, amt uint32, htlc *HTLC, incoming bool) error {
-	// sanity checks
-	if amt >= 1<<30 {
-		return fmt.Errorf("max send 1G sat (1073741823)")
-	}
-	if amt == 0 {
-		return fmt.Errorf("have to send non-zero amount")
-	}
-
-	// see if channel is busy, error if so, lock if not
-	// lock this channel
-
-	select {
-	case <-qc.ClearToSend:
-	// keep going
-	default:
-		return fmt.Errorf("Channel %d busy", qc.Idx())
-	}
-	// ClearToSend is now empty
-
-	// reload from disk here, after unlock
-	err := nd.ReloadQchanState(qc)
-	if err != nil {
-		// don't clear to send here; something is wrong with the channel
-		return err
-	}
-
-	// check that channel is confirmed, if non-test coin
-	wal, ok := nd.SubWallet[qc.Coin()]
-	if !ok {
-		qc.ClearToSend <- true
-		return fmt.Errorf("Not connected to coin type %d\n", qc.Coin())
-	}
-
-	if !wal.Params().TestCoin && qc.Height < 100 {
-		qc.ClearToSend <- true
-		return fmt.Errorf(
-			"height %d; must wait min 1 conf for non-test coin\n", qc.Height)
-	}
-
-	// TODO.jesus Assign the HTLC to the State
-	qc.State.currentHTLC = htlc
-
-	// perform minOutput checks after reload
-	myNewOutputSize := (qc.State.MyAmt - int64(amt)) - qc.State.Fee
-	theirNewOutputSize := qc.Value - (qc.State.MyAmt - int64(amt)) - qc.State.Fee
-	// If incoming, overwrite with correct amounts
-	if (incoming) {
-		myNewOutputSize = qc.State.MyAmt + int64(amt) + qc.State.Fee
-		theirNewOutputSize = qc.Value - (qc.State.MyAmt - int64(amt)) - qc.State.Fee
-	}
-
-	// check if this push would lower my balance below minBal
-	if myNewOutputSize < minOutput {
-		qc.ClearToSend <- true
-		return fmt.Errorf("want to push %s but %s available, %s fee, %s minOutput",
-			lnutil.SatoshiColor(int64(amt)),
-			lnutil.SatoshiColor(qc.State.MyAmt),
-			lnutil.SatoshiColor(qc.State.Fee),
-			lnutil.SatoshiColor(minOutput))
-	}
-	// check if this push is sufficient to get them above minBal
-	if theirNewOutputSize < minOutput {
-		qc.ClearToSend <- true
-		return fmt.Errorf(
-			"pushing %s insufficient; counterparty bal %s fee %s minOutput %s",
-			lnutil.SatoshiColor(int64(amt)),
-			lnutil.SatoshiColor(qc.Value-qc.State.MyAmt),
-			lnutil.SatoshiColor(qc.State.Fee),
-			lnutil.SatoshiColor(minOutput))
-	}
-
-	// if we got here, but channel is not in rest state, try to fix it.
-	if qc.State.Delta != 0 {
-		err = nd.ReSendMsg(qc)
-		if err != nil {
-			qc.ClearToSend <- true
-			return err
-		}
-		qc.ClearToSend <- true
-		return fmt.Errorf("Didn't send.  Recovered though, so try again!")
-	}
-
-	if (incoming) {
-		qc.State.Delta = int32(amt)
-	} else {
-		qc.State.Delta = int32(-amt)
-	}
-	// save to db with ONLY delta changed
-	err = nd.SaveQchanState(qc)
-	if err != nil {
-		// don't clear to send here; something is wrong with the channel
-		return err
-	}
-	// move unlock to here so that delta is saved before
-
-	// TODO.jesus figure out what to do from SendDeltaSig on
-	err = nd.SendDeltaSig(qc)
-	if err != nil {
-		// don't clear; something is wrong with the network
-		return err
-	}
-
-	fmt.Printf("got pre CTS... \n")
-	// block until clear to send is full again
-	<-qc.ClearToSend
-	fmt.Printf("got post CTS... \n")
-	// since we cleared with that statement, fill it again before returning
-	qc.ClearToSend <- true
-
 	return nil
 }

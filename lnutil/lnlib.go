@@ -85,9 +85,7 @@ func FundTxOut(pubA, pubB [33]byte, amt int64) (*wire.TxOut, error) {
 // SenderHTLCScript gives you a script for a htlc push
 // copied from rusty's code.  doesn't look like the script in the RFC though.
 // TODO.jesus Edit as needed
-func SenderHTLCScript(
-	payHash, revokeHash [20]byte,
-	theirPubkey, myPubkey [33]byte,
+func SenderHTLCScript(payHash, revokeHash [20]byte, theirPubkey, myPubkey [33]byte,
 	absDelay, relDelay uint16) []byte {
 
 	builder := txscript.NewScriptBuilder()

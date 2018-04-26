@@ -44,6 +44,17 @@ const (
 
 	//Routing messages
 	MSGID_LINK_DESC = 0x70 // Describes a new channel for routing
+
+	//Exchange Messages
+	MSGID_EXCHANGE_REQUEST        = 0x80 // ask peer to accept or decline a potential exchange
+	MSGID_CREATE_HTLC_DELTASIG    = 0x81 // TODO
+	MSGID_CREATE_HTLC_SIGREV      = 0x82 // TODO
+	MSGID_CREATE_HTLC_GAPSIGREV   = 0x83 // TODO
+	MSGID_CREATE_HTLC_REV         = 0x84 // TODO
+	MSGID_OPEN_HTLC_DELTASIG      = 0x85 // TODO
+	MSGID_OPEN_HTLC_SIGREV        = 0x86 // TODO
+	MSGID_OPEN_HTLC_GAPSIGREV     = 0x87 // TODO
+	MSGID_OPEN_HTLC_REV           = 0x88 // TODO
 )
 
 //interface that all messages follow, for easy use
@@ -113,6 +124,13 @@ func LitMsgFromBytes(b []byte, peerid uint32) (LitMsg, error) {
 
 	case MSGID_LINK_DESC:
 		return NewLinkMsgFromBytes(b, peerid)
+
+	case MSGID_EXCHANGE_REQUEST:
+		return NewExchangeRequestMsgFromBytes(b, peerid)
+	/*
+		TODO
+		case the rest of Exchange stuff:
+	*/
 
 	default:
 		return nil, fmt.Errorf("Unknown message of type %d ", msgType)
@@ -935,3 +953,60 @@ func (self LinkMsg) Bytes() []byte {
 
 func (self LinkMsg) Peer() uint32   { return self.PeerIdx }
 func (self LinkMsg) MsgType() uint8 { return MSGID_LINK_DESC }
+
+// Message for communicating an exchange request
+type ExchangeRequestMsg struct {
+ PeerIdx  uint32
+ Outpoint wire.OutPoint
+ ChanIdx1  uint32
+ Amt1     int64
+ ChanIdx2  uint32
+ Amt2     int64
+}
+
+func NewExchangeRequestMsg(peerid uint32, op wire.OutPoint, chanIdx1 uint32, amt1 int64, chanIdx2 uint32, amt2 int64) ExchangeRequestMsg {
+ m := new(ExchangeRequestMsg)
+ m.PeerIdx = peerid
+ m.Outpoint = op
+ m.ChanIdx1 = chanIdx1
+ m.Amt1 = amt1
+ m.ChanIdx2 = chanIdx2
+ m.Amt2 = amt2
+ return *m
+}
+
+func NewExchangeRequestMsgFromBytes(b []byte, peerid uint32) (ExchangeRequestMsg, error) {
+ er := new(ExchangeRequestMsg)
+ er.PeerIdx = peerid
+
+ if len(b) < 61 {
+	 return *er, fmt.Errorf("got %d byte DeltaSig, expect 61", len(b))
+ }
+
+ buf := bytes.NewBuffer(b[1:]) // get rid of messageType
+
+ var op [36]byte
+ copy(op[:], buf.Next(36))
+ er.Outpoint = *OutPointFromBytes(op)
+ er.ChanIdx1 = BtU32(buf.Next(4))
+ er.Amt1 = BtI64(buf.Next(8))
+ er.ChanIdx2 = BtU32(buf.Next(4))
+ er.Amt2 = BtI64(buf.Next(8))
+
+ return *er, nil
+}
+
+func (self ExchangeRequestMsg) Bytes() []byte {
+ var msg []byte
+ msg = append(msg, self.MsgType())
+ opArr := OutPointToBytes(self.Outpoint)
+ msg = append(msg, opArr[:]...)
+ msg = append(msg, U32tB(self.ChanIdx1)...)
+ msg = append(msg, I64tB(self.Amt1)...)
+ msg = append(msg, U32tB(self.ChanIdx2)...)
+ msg = append(msg, I64tB(self.Amt2)...)
+ return msg
+}
+
+func (self ExchangeRequestMsg) Peer() uint32   { return self.PeerIdx }
+func (self ExchangeRequestMsg) MsgType() uint8 { return MSGID_EXCHANGE_REQUEST }

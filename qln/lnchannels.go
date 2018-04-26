@@ -78,7 +78,8 @@ type StatCom struct {
 	// only one sig is ever stored, to prevent broadcasting the wrong tx.
 	// could add a mutex here... maybe will later.
 
-	currentHTLC *HTLC // the latest HTLC existing between the two nodes, if any exist
+	CurrentHTLC *HTLC // the latest HTLC existing between the two nodes, if any exist
+	CurrentRequest *Request // the latest exchange request existing between two nodes, if any exists
 }
 
 // Hashed Timelock Contract for atomic cross-chain swaps
@@ -87,19 +88,31 @@ type HTLC struct {
 	Incoming bool
 	/* HTLC participants channel with currency 1 */
 	Qchan1 wire.OutPoint
-	/* HTLC participants channel with currency 2 */
-	//QchanIdx2 uint32
 	/* Amount being exchanged in channel qchan1*/
-	ExchangeAmountQchan1 int64
-	/* Amount being exchanged in channel qchan1*/
-	//ExchangeAmountQchan2 int64
+	ExchangeAmount int64
 	/* The preimage used to lock the initiator's, how does this work? tx */
 	Preimage []int32
 	/* The hash of the preimage used to lock the initiator's tx */
 	RHash [20]byte
 	/* Amount of time before the HTLC expires */
 	Locktime time.Time
-};
+}
+
+// Exchange request struct with request information
+type Request struct {
+	// Index of the first channel on which to send tokens
+  ChanIdx1  uint32
+	// The amount of tokens being sent on the first channel
+  Amt1     int64
+	// Index of the second channel on which to send tokens
+  ChanIdx2  uint32
+	// The amount of tokens being sent on the second channel
+  Amt2     int64
+	// The time at which the exchange request expires
+	ExpirationTime time.Time
+	// The identification for this particular request
+	RequestID string
+}
 
 // QCloseData is the output resulting from an un-cooperative close
 // of the channel.  This happens when either party breaks non-cooperatively.
