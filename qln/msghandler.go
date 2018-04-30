@@ -340,38 +340,37 @@ func (nd *LitNode) ExchangeHandler(routedMsg lnutil.LitMsg, q *Qchan) error {
 		fmt.Printf("Got ExchangeRequestMsg from %x\n", routedMsg.Peer())
 		return nd.ExchangeRequestHandler(message, q)
 
-	// TODO.jesusUncomment
-	// case lnutil.CreateHTLCDeltaSigMsg:
-	// 	fmt.Printf("Got CreateHTLCDELTASIG from %x\n", routedMsg.Peer())
-	// 	return nd.CreateHTLCDeltaSigHandler(message, q)
-	//
-	// case lnutil.CreateHTLCSigRevMsg: // SIGNATURE AND REVOCATION
-	// 	fmt.Printf("Got CreateHTLCSIGREV from %x\n", routedMsg.Peer())
-	// 	return nd.CreateHTLCSigRevHandler(message, q)
-	//
-	// case lnutil.CreateHTLCGapSigRevMsg: // GAP SIGNATURE AND REVOCATION
-	// 	fmt.Printf("Got CreateHTLCGapSigRev from %x\n", routedMsg.Peer())
-	// 	return nd.CreateHTLCGapSigRevHandler(message, q)
-	//
-	// case lnutil.CreateHTLCRevMsg: // REVOCATION
-	// 	fmt.Printf("Got CreateHTLCREV from %x\n", routedMsg.Peer())
-	// 	return nd.CreateHTLCRevHandler(message, q)
-	//
-	// case lnutil.OpenHTLCDeltaSigMsg:
-	// 	fmt.Printf("Got OpenHTLCDELTASIG from %x\n", routedMsg.Peer())
-	// 	return nd.OpenHTLCDeltaSigHandler(message, q)
-	//
-	// case lnutil.OpenHTLCSigRevMsg: // SIGNATURE AND REVOCATION
-	// 	fmt.Printf("Got OpenHTLCSIGREV from %x\n", routedMsg.Peer())
-	// 	return nd.OpenHTLCSigRevHandler(message, q)
-	//
-	// case lnutil.OpenHTLCGapSigRevMsg: // GAP SIGNATURE AND REVOCATION
-	// 	fmt.Printf("Got OpenHTLCGapSigRev from %x\n", routedMsg.Peer())
-	// 	return nd.OpenHTLCGapSigRevHandler(message, q)
-	//
-	// case lnutil.OpenHTLCRevMsg: // REVOCATION
-	// 	fmt.Printf("Got OpenHTLCREV from %x\n", routedMsg.Peer())
-	// 	return nd.OpenHTLCRevHandler(message, q)
+	case lnutil.CreateHTLCDeltaSigMsg:
+		fmt.Printf("Got CreateHTLCDELTASIG from %x\n", routedMsg.Peer())
+		return nd.CreateHTLCDeltaSigHandler(message, q)
+
+	case lnutil.CreateHTLCSigRevMsg:
+		fmt.Printf("Got CreateHTLCSIGREV from %x\n", routedMsg.Peer())
+		return nd.CreateHTLCSigRevHandler(message, q)
+
+	case lnutil.CreateHTLCGapSigRevMsg:
+		fmt.Printf("Got CreateHTLCGapSigRev from %x\n", routedMsg.Peer())
+		return nd.CreateHTLCGapSigRevHandler(message, q)
+
+	case lnutil.CreateHTLCRevMsg:
+		fmt.Printf("Got CreateHTLCREV from %x\n", routedMsg.Peer())
+		return nd.CreateHTLCRevHandler(message, q)
+
+	case lnutil.OpenHTLCDeltaSigMsg:
+		fmt.Printf("Got OpenHTLCDELTASIG from %x\n", routedMsg.Peer())
+		return nd.OpenHTLCDeltaSigHandler(message, q)
+
+	case lnutil.OpenHTLCSigRevMsg:
+		fmt.Printf("Got OpenHTLCSIGREV from %x\n", routedMsg.Peer())
+		return nd.OpenHTLCSigRevHandler(message, q)
+
+	case lnutil.OpenHTLCGapSigRevMsg:
+		fmt.Printf("Got OpenHTLCGapSigRev from %x\n", routedMsg.Peer())
+		return nd.OpenHTLCGapSigRevHandler(message, q)
+
+	case lnutil.OpenHTLCRevMsg:
+		fmt.Printf("Got OpenHTLCREV from %x\n", routedMsg.Peer())
+		return nd.OpenHTLCRevHandler(message, q)
 
 	default:
 		return fmt.Errorf("Unknown message type %x", routedMsg.MsgType())

@@ -215,7 +215,7 @@ func (q *Qchan) BuildStateTx(mine bool) (*wire.MsgTx, error) {
 	if pkhAmt != 0 {
 		tx.AddTxOut(outPKH)
 	}
-	// TODO.jesus
+	// TODO.jesus?
 	// make htlc output here
 	// also create an HTLC script here, add in the absdelay and reldelay, arbitrary 100000 for now
 	// add that output to the tx

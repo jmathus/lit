@@ -524,15 +524,18 @@ func (r *LitRPC) Respond(args RespondArgs, reply *RespondReply) error {
 	qc2.Height = dummyqc2.Height
 
 	if (args.Yesno == "YES") && (qc1.State.CurrentRequest.ExpirationTime.After(time.Now().UTC())) {
+		// This is the HTLC that the acceptor (or the individual replying yes) will receive
 		htlc1, preimage := makeHTLCNoPreimage(qc1, uint32(currentRequestInfo.Amt1))
+		// This is the HTLC that the initiator will receive
 		htlc2 := makeHTLCWithPreimage(qc2, uint32(currentRequestInfo.Amt2), preimage)
 
 		// One ExchangeChannel call for the incoming amount, one for the outgoing amount
-		err = r.Node.CreateHTLC(qc1, uint32(currentRequestInfo.Amt1), htlc1, false)
+		// Create and establish HTLCs storing the transmitted amounts
+		err = r.Node.CreateHTLC(qc1, uint32(currentRequestInfo.Amt1), htlc1, true)
 		if err != nil {
 			return err
 		}
-		err = r.Node.CreateHTLC(qc2, uint32(currentRequestInfo.Amt2), htlc2, true)
+		err = r.Node.CreateHTLC(qc2, uint32(currentRequestInfo.Amt2), htlc2, false)
 		if err != nil {
 			return err
 		}
@@ -540,12 +543,13 @@ func (r *LitRPC) Respond(args RespondArgs, reply *RespondReply) error {
 		reply.StateIndex = qc1.State.StateIdx
 		reply.StateIndex = qc2.State.StateIdx
 
-		// TODO.jesus? Implement OpenHTLC() using preimage from above
-		err = r.Node.OpenHTLC(qc1, preimage, false)
+		// One ExchangeChannel call for the incoming amount, one for the outgoing amount
+		// Opens the stored HTLCs, finalizing the exchange of tokens
+		err = r.Node.OpenHTLC(qc1, uint32(currentRequestInfo.Amt1), preimage, true)
 		if err != nil {
 			return err
 		}
-		err = r.Node.OpenHTLC(qc2, preimage, true)
+		err = r.Node.OpenHTLC(qc2, uint32(currentRequestInfo.Amt2), preimage, false)
 		if err != nil {
 			return err
 		}

@@ -119,6 +119,11 @@ func (nd LitNode) CreateHTLC(qc *Qchan, amt uint32, htlc *HTLC, incoming bool) e
 	// TODO.jesus Assign the HTLC to the State
 	qc.State.CurrentHTLC = htlc
 
+	// Check that the amount passed is this method equals the amount passed in the htlc
+	if (int64(amt) != htlc.ExchangeAmount) {
+		return fmt.Errorf("Mismatch between given amount and amount found in given HTLC")
+	}
+
 	// perform minOutput checks after reload
 	myNewOutputSize := (qc.State.MyAmt - int64(amt)) - qc.State.Fee
 	theirNewOutputSize := qc.Value - (qc.State.MyAmt - int64(amt)) - qc.State.Fee
@@ -149,9 +154,9 @@ func (nd LitNode) CreateHTLC(qc *Qchan, amt uint32, htlc *HTLC, incoming bool) e
 	}
 
 	// if we got here, but channel is not in rest state, try to fix it.
-  // TODO.jesusUncomment
+	// TODO.jesus?AddCheck How to resend msg
 	// if qc.State.Delta != 0 {
-	// 	err = nd.CreateHTLCReSendMsg(qc)
+	// 	err = nd.CreateHTLCReSendMsg(qc, incoming)
 	// 	if err != nil {
 	// 		qc.ClearToSend <- true
 	// 		return err
@@ -166,20 +171,18 @@ func (nd LitNode) CreateHTLC(qc *Qchan, amt uint32, htlc *HTLC, incoming bool) e
 		qc.State.Delta = int32(-amt)
 	}
 
-	// save to db with ONLY htlc changed
+	// save to db with ONLY htlc and delta changed
 	err = nd.SaveQchanState(qc)
 	if err != nil {
 		// don't clear to send here; something is wrong with the channel
 		return err
 	}
 
-	// TODO.jesus figure out what to do from SendDeltaSig on
-  // TODO.jesusUncomment
-	// err = nd.CreateHTLCSendDeltaSig(qc, incoming)
-	// if err != nil {
-	// 	// don't clear; something is wrong with the network
-	// 	return err
-	// }
+	err = nd.CreateHTLCSendDeltaSig(qc, incoming)
+	if err != nil {
+		// don't clear; something is wrong with the network
+		return err
+	}
 
 	fmt.Printf("got pre CTS... \n")
 	// block until clear to send is full again
@@ -191,7 +194,7 @@ func (nd LitNode) CreateHTLC(qc *Qchan, amt uint32, htlc *HTLC, incoming bool) e
 	return nil
 }
 
-func (nd LitNode) OpenHTLC(qc *Qchan, preimage []int32, incoming bool) error {
+func (nd LitNode) OpenHTLC(qc *Qchan, amt uint32, preimage []int32, incoming bool) error {
   // Checks the preimage to unlock the HTLC
   hash := sha1.New()
   hash.Write([]byte(string(preimage)))
@@ -240,38 +243,13 @@ func (nd LitNode) OpenHTLC(qc *Qchan, preimage []int32, incoming bool) error {
 			"height %d; must wait min 1 conf for non-test coin\n", qc.Height)
 	}
 
-	// TODO.jesus Assign the HTLC to the State
-	amt := qc.State.CurrentHTLC.ExchangeAmount
-
-	// perform minOutput checks after reload
-	myNewOutputSize := (qc.State.MyAmt - int64(amt)) - qc.State.Fee
-	theirNewOutputSize := qc.Value - (qc.State.MyAmt - int64(amt)) - qc.State.Fee
-	// If incoming, overwrite with correct amounts
-	if (incoming) {
-		myNewOutputSize = qc.State.MyAmt + int64(amt) + qc.State.Fee
-		theirNewOutputSize = qc.Value - (qc.State.MyAmt - int64(amt)) - qc.State.Fee
+	// Check that the amount in the HTLC being manipulated is equal to the amount that we
+	// are currently trying to exchange (to make sure there is no HTLC mixup)
+	if (int64(amt) != qc.State.CurrentHTLC.ExchangeAmount) {
+		return fmt.Errorf("Wrong HTLC: amount in HTLC is %d, but are exchanging %d", qc.State.CurrentHTLC.ExchangeAmount, amt)
 	}
 
-	// check if this push would lower my balance below minBal
-	if myNewOutputSize < minOutput {
-		qc.ClearToSend <- true
-		return fmt.Errorf("want to push %s but %s available, %s fee, %s minOutput",
-			lnutil.SatoshiColor(int64(amt)),
-			lnutil.SatoshiColor(qc.State.MyAmt),
-			lnutil.SatoshiColor(qc.State.Fee),
-			lnutil.SatoshiColor(minOutput))
-	}
-	// check if this push is sufficient to get them above minBal
-	if theirNewOutputSize < minOutput {
-		qc.ClearToSend <- true
-		return fmt.Errorf(
-			"pushing %s insufficient; counterparty bal %s fee %s minOutput %s",
-			lnutil.SatoshiColor(int64(amt)),
-			lnutil.SatoshiColor(qc.Value-qc.State.MyAmt),
-			lnutil.SatoshiColor(qc.State.Fee),
-			lnutil.SatoshiColor(minOutput))
-	}
-
+	// TODO.jesus?AddCheck How to resend msg
 	// if we got here, but channel is not in rest state, try to fix it.
 	// if qc.State.Delta != 0 {
 	// 	err = nd.OpenHTLCReSendMsg(qc)
@@ -297,13 +275,11 @@ func (nd LitNode) OpenHTLC(qc *Qchan, preimage []int32, incoming bool) error {
 	}
 	// move unlock to here so that delta is saved before
 
-	// TODO.jesus figure out what to do from SendDeltaSig on
-  // TODO.jesusUncomment
-	// err = nd.OpenHTLCSendDeltaSig(qc, incoming)
-	// if err != nil {
-	// 	// don't clear; something is wrong with the network
-	// 	return err
-	// }
+	err = nd.OpenHTLCSendDeltaSig(qc, incoming)
+	if err != nil {
+		// don't clear; something is wrong with the network
+		return err
+	}
 
 	fmt.Printf("got pre CTS... \n")
 	// block until clear to send is full again
