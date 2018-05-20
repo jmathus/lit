@@ -6,74 +6,12 @@ import (
   "crypto/sha1"
   "math/rand"
 
-	//"github.com/adiabat/btcd/wire"
 	"github.com/mit-dci/lit/lnutil"
 )
 
-// HTLC Serialization Method
-func (htlc *HTLC) HTLCToBytes() []byte {
-	var b []byte
-
-	// Struct is Incoming (4), Qchan1 (36), ExchangeAmount (8)
-	// Preimage (20), RHash (20), Locktime (20)
-	//
-	// Total Length: 108
-
-	if (htlc.Incoming) {
-		b = append(b, lnutil.U32tB(uint32(1))...)
-	} else {
-		b = append(b, lnutil.U32tB(uint32(0))...)
-	}
-
-	opbytes := lnutil.OutPointToBytes(htlc.Qchan1)
-	b = append(b, opbytes[:]...)
-	b = append(b, lnutil.I64tB(htlc.ExchangeAmount)...)
-	b = append(b, lnutil.I32ArrtB(htlc.Preimage[:])...)
-	b = append(b, htlc.RHash[:]...)
-	b = append(b, lnutil.TimetB(htlc.Locktime)...)
-
-	return b
-}
-
-// HTLC Deserialization Method
-func HTLCFromBytes(b []byte) (*HTLC, error) {
-	if len(b) != 76{
-		return nil, fmt.Errorf("%d bytes, need 108", len(b))
-	}
-
-	htlc := new(HTLC)
-
-	// "Incoming" Variable Converted
-	if (lnutil.BtU32(b[:4]) == 1) {
-		htlc.Incoming = true
-	} else {
-		htlc.Incoming = false
-	}
-
-	// "Qchan1" Variable Converted
-	var opArr [36]byte
-	copy(opArr[:], b[4:40])
-	op := lnutil.OutPointFromBytes(opArr)
-	htlc.Qchan1 = *op
-
-	// "ExchangeAmount" Variable Converted
-	htlc.ExchangeAmount = lnutil.BtI64(b[40:48])
-
-	// "Preimage" Variable Converted
-	copy(htlc.Preimage[:], lnutil.BtI32Arr(b[48:68]))
-
-	// "RHash" Variable Converted
-	copy(htlc.RHash[:], b[68:88])
-
-	// "Locktime" Variable Converted
-	htlc.Locktime = lnutil.BtTime(b[88:108])
-
-	return htlc, nil
-}
-
 // ExchangeChannels initiates a state update by setting up HTLC's
 // TODO.jesus
-func (nd LitNode) CreateHTLC(qc *Qchan, amt uint32, htlc *HTLC, incoming bool) error {
+func (nd LitNode) AssignHTLC(qc *Qchan, amt uint32, htlc *HTLC, incoming bool) error {
 	// sanity checks
 	if amt >= 1<<30 {
 		return fmt.Errorf("max send 1G sat (1073741823)")
@@ -156,7 +94,7 @@ func (nd LitNode) CreateHTLC(qc *Qchan, amt uint32, htlc *HTLC, incoming bool) e
 	// if we got here, but channel is not in rest state, try to fix it.
 	// TODO.jesus?AddCheck How to resend msg
 	// if qc.State.Delta != 0 {
-	// 	err = nd.CreateHTLCReSendMsg(qc, incoming)
+	// 	err = nd.AssignHTLCReSendMsg(qc, incoming)
 	// 	if err != nil {
 	// 		qc.ClearToSend <- true
 	// 		return err
@@ -178,7 +116,7 @@ func (nd LitNode) CreateHTLC(qc *Qchan, amt uint32, htlc *HTLC, incoming bool) e
 		return err
 	}
 
-	err = nd.CreateHTLCSendDeltaSig(qc, incoming)
+	err = nd.AssignHTLCSendDeltaSig(qc, incoming, htlc)
 	if err != nil {
 		// don't clear; something is wrong with the network
 		return err
@@ -262,9 +200,9 @@ func (nd LitNode) OpenHTLC(qc *Qchan, amt uint32, preimage []int32, incoming boo
 	// }
 
 	if (incoming) {
-		qc.State.Delta = int32(amt)
+		qc.State.Delta = int32(qc.State.CurrentHTLC.ExchangeAmount)
 	} else {
-		qc.State.Delta = int32(-amt)
+		qc.State.Delta = int32(-qc.State.CurrentHTLC.ExchangeAmount)
 	}
 
 	// save to db with ONLY delta changed
@@ -275,7 +213,7 @@ func (nd LitNode) OpenHTLC(qc *Qchan, amt uint32, preimage []int32, incoming boo
 	}
 	// move unlock to here so that delta is saved before
 
-	err = nd.OpenHTLCSendDeltaSig(qc, incoming)
+	err = nd.OpenHTLCSendDeltaSig(qc, incoming, preimage)
 	if err != nil {
 		// don't clear; something is wrong with the network
 		return err

@@ -90,8 +90,6 @@ type HTLC struct {
 	Qchan1 wire.OutPoint
 	/* Amount being exchanged in channel qchan1*/
 	ExchangeAmount int64
-	/* The preimage used to lock the initiator's, how does this work? tx */
-	Preimage []int32
 	/* The hash of the preimage used to lock the initiator's tx */
 	RHash [20]byte
 	/* Amount of time before the HTLC expires */

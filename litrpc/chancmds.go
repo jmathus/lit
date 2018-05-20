@@ -531,11 +531,11 @@ func (r *LitRPC) Respond(args RespondArgs, reply *RespondReply) error {
 
 		// One ExchangeChannel call for the incoming amount, one for the outgoing amount
 		// Create and establish HTLCs storing the transmitted amounts
-		err = r.Node.CreateHTLC(qc1, uint32(currentRequestInfo.Amt1), htlc1, true)
+		err = r.Node.AssignHTLC(qc1, uint32(currentRequestInfo.Amt1), htlc1, true)
 		if err != nil {
 			return err
 		}
-		err = r.Node.CreateHTLC(qc2, uint32(currentRequestInfo.Amt2), htlc2, false)
+		err = r.Node.AssignHTLC(qc2, uint32(currentRequestInfo.Amt2), htlc2, false)
 		if err != nil {
 			return err
 		}
@@ -600,7 +600,6 @@ func makeHTLCNoPreimage(qc *qln.Qchan, amt uint32) (*qln.HTLC, []int32) {
 	hash.Write([]byte(string(newPreimage)))
 	preimageRHash := hash.Sum(nil)
 
-	copy(htlc.Preimage[:], newPreimage)
 	copy(htlc.RHash[:], preimageRHash)
 
 	return htlc, newPreimage
@@ -619,7 +618,6 @@ func makeHTLCWithPreimage(qc *qln.Qchan, amt uint32, preimage []int32) *qln.HTLC
 	hash.Write([]byte(string(preimage)))
 	preimageRHash := hash.Sum(nil)
 
-	copy(htlc.Preimage[:], preimage)
 	copy(htlc.RHash[:], preimageRHash)
 
 	return htlc

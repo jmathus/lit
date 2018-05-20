@@ -2,8 +2,8 @@ package qln
 
 import (
 	"fmt"
+  "crypto/sha1"
 
-	//"github.com/adiabat/btcd/wire"
 	"github.com/mit-dci/lit/lnutil"
 )
 
@@ -28,19 +28,19 @@ import (
 // 	return nd.OpenHTLCSendREV(qc)
 // }
 
-func (nd *LitNode) OpenHTLCSendDeltaSig(q *Qchan, incoming bool) error {
+func (nd *LitNode) OpenHTLCSendDeltaSig(q *Qchan, incoming bool, preimage []int32) error {
 	// increment state number, update balance, go to next elkpoint
 	q.State.StateIdx++
   if (incoming) {
     q.State.MyAmt += int64(q.State.Delta)
 
     // Close the HTLC now that it has been added
-    htlc := new(HTLC)
-    q.State.CurrentHTLC = htlc
+    newHtlc := new(HTLC)
+    q.State.CurrentHTLC = newHtlc
   } else {
     // Close the HTLC now that it has been added
-    htlc := new(HTLC)
-    q.State.CurrentHTLC = htlc
+    newHtlc := new(HTLC)
+    q.State.CurrentHTLC = newHtlc
   }
 	q.State.ElkPoint = q.State.NextElkPoint
 	q.State.NextElkPoint = q.State.N2ElkPoint
@@ -52,7 +52,7 @@ func (nd *LitNode) OpenHTLCSendDeltaSig(q *Qchan, incoming bool) error {
 		return err
 	}
 
-	outMsg := lnutil.NewOpenHTLCDeltaSigMsg(q.Peer(), q.Op, -q.State.Delta, !incoming, sig, q.State.Data)
+	outMsg := lnutil.NewOpenHTLCDeltaSigMsg(q.Peer(), q.Op, -q.State.Delta, !incoming, preimage, sig, q.State.Data)
 	nd.OmniOut <- outMsg
 
 	return nil
@@ -132,6 +132,17 @@ func (nd *LitNode) OpenHTLCDeltaSigHandler(msg lnutil.OpenHTLCDeltaSigMsg, qc *Q
 	}
 
   if (msg.Incoming) {
+		// Check that the HTLC can be accessed by checking for proper preimage
+		hash := sha1.New()
+	  hash.Write([]byte(string(msg.Preimage)))
+	  preRHash := hash.Sum(nil)
+	  var computedRHash [20]byte
+	  copy(computedRHash[:], preRHash)
+
+	  if (computedRHash != qc.State.CurrentHTLC.RHash) {
+	    return fmt.Errorf("Wrong preimage, cannot unlock this HTLC")
+	  }
+
     // they have to actually send you money
     if incomingDelta < 1 {
   			return fmt.Errorf("OpenHTLCDeltaSigHandler err: delta %d", incomingDelta)

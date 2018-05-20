@@ -340,21 +340,21 @@ func (nd *LitNode) ExchangeHandler(routedMsg lnutil.LitMsg, q *Qchan) error {
 		fmt.Printf("Got ExchangeRequestMsg from %x\n", routedMsg.Peer())
 		return nd.ExchangeRequestHandler(message, q)
 
-	case lnutil.CreateHTLCDeltaSigMsg:
-		fmt.Printf("Got CreateHTLCDELTASIG from %x\n", routedMsg.Peer())
-		return nd.CreateHTLCDeltaSigHandler(message, q)
+	case lnutil.AssignHTLCDeltaSigMsg:
+		fmt.Printf("Got AssignHTLCDELTASIG from %x\n", routedMsg.Peer())
+		return nd.AssignHTLCDeltaSigHandler(message, q)
 
-	case lnutil.CreateHTLCSigRevMsg:
-		fmt.Printf("Got CreateHTLCSIGREV from %x\n", routedMsg.Peer())
-		return nd.CreateHTLCSigRevHandler(message, q)
+	case lnutil.AssignHTLCSigRevMsg:
+		fmt.Printf("Got AssignHTLCSIGREV from %x\n", routedMsg.Peer())
+		return nd.AssignHTLCSigRevHandler(message, q)
 
-	case lnutil.CreateHTLCGapSigRevMsg:
-		fmt.Printf("Got CreateHTLCGapSigRev from %x\n", routedMsg.Peer())
-		return nd.CreateHTLCGapSigRevHandler(message, q)
+	case lnutil.AssignHTLCGapSigRevMsg:
+		fmt.Printf("Got AssignHTLCGapSigRev from %x\n", routedMsg.Peer())
+		return nd.AssignHTLCGapSigRevHandler(message, q)
 
-	case lnutil.CreateHTLCRevMsg:
-		fmt.Printf("Got CreateHTLCREV from %x\n", routedMsg.Peer())
-		return nd.CreateHTLCRevHandler(message, q)
+	case lnutil.AssignHTLCRevMsg:
+		fmt.Printf("Got AssignHTLCREV from %x\n", routedMsg.Peer())
+		return nd.AssignHTLCRevHandler(message, q)
 
 	case lnutil.OpenHTLCDeltaSigMsg:
 		fmt.Printf("Got OpenHTLCDELTASIG from %x\n", routedMsg.Peer())

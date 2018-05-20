@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
+	"time"
 
 	"github.com/adiabat/btcd/chaincfg/chainhash"
 	"github.com/adiabat/btcd/wire"
@@ -128,13 +129,13 @@ func LitMsgFromBytes(b []byte, peerid uint32) (LitMsg, error) {
 	case MSGID_EXCHANGE_REQUEST:
 		return NewExchangeRequestMsgFromBytes(b, peerid)
 	case MSGID_CREATE_HTLC_DELTASIG:
-		return NewCreateHTLCDeltaSigMsgFromBytes(b, peerid)
+		return NewAssignHTLCDeltaSigMsgFromBytes(b, peerid)
 	case MSGID_CREATE_HTLC_SIGREV:
-		return NewCreateHTLCSigRevMsgFromBytes(b, peerid)
+		return NewAssignHTLCSigRevMsgFromBytes(b, peerid)
 	case MSGID_CREATE_HTLC_GAPSIGREV:
-		return NewCreateHTLCGapSigRevMsgFromBytes(b, peerid)
+		return NewAssignHTLCGapSigRevMsgFromBytes(b, peerid)
 	case MSGID_CREATE_HTLC_REV:
-		return NewCreateHTLCRevMsgFromBytes(b, peerid)
+		return NewAssignHTLCRevMsgFromBytes(b, peerid)
 	case MSGID_OPEN_HTLC_DELTASIG:
 		return NewOpenHTLCDeltaSigMsgFromBytes(b, peerid)
 	case MSGID_OPEN_HTLC_SIGREV:
@@ -1031,33 +1032,106 @@ func (self ExchangeRequestMsg) MsgType() uint8 { return MSGID_EXCHANGE_REQUEST }
 // Create HTLC Messages
 //////////////////////////////////////////////////////////////////////////////////////////////////
 
+// Hashed Timelock Contract for atomic cross-chain swaps
+type HTLC struct {
+	/* If the payment is incoming or outgoing (recipient or sender) */
+	Incoming bool
+	/* HTLC participants channel with currency 1 */
+	Qchan1 wire.OutPoint
+	/* Amount being exchanged in channel qchan1*/
+	ExchangeAmount int64
+	/* The hash of the preimage used to lock the initiator's tx */
+	RHash [20]byte
+	/* Amount of time before the HTLC expires */
+	Locktime time.Time
+}
+
+// HTLC Serialization Method
+func HTLCToBytes(htlc HTLC) []byte {
+	var b []byte
+
+	// Struct is Incoming (4), Qchan1 (36), ExchangeAmount (8)
+	// RHash (20), Locktime (20)
+	//
+	// Total Length: 88
+
+	if (htlc.Incoming) {
+		b = append(b, U32tB(uint32(1))...)
+	} else {
+		b = append(b, U32tB(uint32(0))...)
+	}
+
+	opbytes := OutPointToBytes(htlc.Qchan1)
+	b = append(b, opbytes[:]...)
+	b = append(b, I64tB(htlc.ExchangeAmount)...)
+	b = append(b, htlc.RHash[:]...)
+	b = append(b, TimetB(htlc.Locktime)...)
+
+	return b
+}
+
+// HTLC Deserialization Method
+func HTLCFromBytes(b []byte) (HTLC, error) {
+	if len(b) != 88{
+		return *new(HTLC), fmt.Errorf("%d bytes, need 88", len(b))
+	}
+
+	htlc := new(HTLC)
+
+	// "Incoming" Variable Converted
+	if (BtU32(b[:4]) == 1) {
+		htlc.Incoming = true
+	} else {
+		htlc.Incoming = false
+	}
+
+	// "Qchan1" Variable Converted
+	var opArr [36]byte
+	copy(opArr[:], b[4:40])
+	op := OutPointFromBytes(opArr)
+	htlc.Qchan1 = *op
+
+	// "ExchangeAmount" Variable Converted
+	htlc.ExchangeAmount = BtI64(b[40:48])
+
+	// "RHash" Variable Converted
+	copy(htlc.RHash[:], b[48:68])
+
+	// "Locktime" Variable Converted
+	htlc.Locktime = BtTime(b[68:88])
+
+	return *htlc, nil
+}
+
 //message for sending an amount with the signature
-type CreateHTLCDeltaSigMsg struct {
+type AssignHTLCDeltaSigMsg struct {
 	PeerIdx   uint32
 	Outpoint  wire.OutPoint
 	Delta     int32
 	Incoming  bool
+	HTLC      HTLC
 	Signature [64]byte
 	Data      [32]byte
 }
 
-func NewCreateHTLCDeltaSigMsg(peerid uint32, OP wire.OutPoint, DELTA int32, INCOMING bool, SIG [64]byte, data [32]byte) CreateHTLCDeltaSigMsg {
-	d := new(CreateHTLCDeltaSigMsg)
+func NewAssignHTLCDeltaSigMsg(peerid uint32, OP wire.OutPoint, DELTA int32, INCOMING bool, HTLC HTLC, SIG [64]byte, data [32]byte) AssignHTLCDeltaSigMsg {
+	d := new(AssignHTLCDeltaSigMsg)
 	d.PeerIdx = peerid
 	d.Outpoint = OP
 	d.Delta = DELTA
 	d.Incoming = INCOMING
+	d.HTLC = HTLC
 	d.Signature = SIG
 	d.Data = data
 	return *d
 }
 
-func NewCreateHTLCDeltaSigMsgFromBytes(b []byte, peerid uint32) (CreateHTLCDeltaSigMsg, error) {
-	ds := new(CreateHTLCDeltaSigMsg)
+func NewAssignHTLCDeltaSigMsgFromBytes(b []byte, peerid uint32) (AssignHTLCDeltaSigMsg, error) {
+	ds := new(AssignHTLCDeltaSigMsg)
 	ds.PeerIdx = peerid
 
-	if len(b) < 109 {
-		return *ds, fmt.Errorf("got %d byte CreateHTLCDeltaSig, expect 109", len(b))
+	if len(b) < 197 {
+		return *ds, fmt.Errorf("got %d byte AssignHTLCDeltaSig, expect 197", len(b))
 	}
 
 	buf := bytes.NewBuffer(b[1:]) // get rid of messageType
@@ -1073,12 +1147,13 @@ func NewCreateHTLCDeltaSigMsgFromBytes(b []byte, peerid uint32) (CreateHTLCDelta
 	} else {
 		ds.Incoming = false
 	}
+	ds.HTLC,_ = HTLCFromBytes(buf.Next(88))
 	copy(ds.Signature[:], buf.Next(64))
 	copy(ds.Data[:], buf.Next(32))
 	return *ds, nil
 }
 
-func (self CreateHTLCDeltaSigMsg) Bytes() []byte {
+func (self AssignHTLCDeltaSigMsg) Bytes() []byte {
 	var msg []byte
 	msg = append(msg, self.MsgType())
 	opArr := OutPointToBytes(self.Outpoint)
@@ -1089,16 +1164,17 @@ func (self CreateHTLCDeltaSigMsg) Bytes() []byte {
 	} else {
 		msg = append(msg, I32tB(0)...)
 	}
+	msg = append(msg, HTLCToBytes(self.HTLC)...)
 	msg = append(msg, self.Signature[:]...)
 	msg = append(msg, self.Data[:]...)
 	return msg
 }
 
-func (self CreateHTLCDeltaSigMsg) Peer() uint32   { return self.PeerIdx }
-func (self CreateHTLCDeltaSigMsg) MsgType() uint8 { return MSGID_CREATE_HTLC_DELTASIG }
+func (self AssignHTLCDeltaSigMsg) Peer() uint32   { return self.PeerIdx }
+func (self AssignHTLCDeltaSigMsg) MsgType() uint8 { return MSGID_CREATE_HTLC_DELTASIG }
 
 //a message that pushes using channel information
-type CreateHTLCSigRevMsg struct {
+type AssignHTLCSigRevMsg struct {
 	PeerIdx    uint32
 	Outpoint   wire.OutPoint
 	Incoming   bool
@@ -1107,8 +1183,8 @@ type CreateHTLCSigRevMsg struct {
 	N2ElkPoint [33]byte
 }
 
-func NewCreateHTLCSigRev(peerid uint32, OP wire.OutPoint, INCOMING bool, SIG [64]byte, ELK chainhash.Hash, N2ELK [33]byte) CreateHTLCSigRevMsg {
-	s := new(CreateHTLCSigRevMsg)
+func NewAssignHTLCSigRev(peerid uint32, OP wire.OutPoint, INCOMING bool, SIG [64]byte, ELK chainhash.Hash, N2ELK [33]byte) AssignHTLCSigRevMsg {
+	s := new(AssignHTLCSigRevMsg)
 	s.PeerIdx = peerid
 	s.Outpoint = OP
 	s.Incoming = INCOMING
@@ -1118,12 +1194,12 @@ func NewCreateHTLCSigRev(peerid uint32, OP wire.OutPoint, INCOMING bool, SIG [64
 	return *s
 }
 
-func NewCreateHTLCSigRevMsgFromBytes(b []byte, peerid uint32) (CreateHTLCSigRevMsg, error) {
-	sr := new(CreateHTLCSigRevMsg)
+func NewAssignHTLCSigRevMsgFromBytes(b []byte, peerid uint32) (AssignHTLCSigRevMsg, error) {
+	sr := new(AssignHTLCSigRevMsg)
 	sr.PeerIdx = peerid
 
 	if len(b) < 170 {
-		return *sr, fmt.Errorf("got %d byte CreateHTLCSigRev, expect 170", len(b))
+		return *sr, fmt.Errorf("got %d byte AssignHTLCSigRev, expect 170", len(b))
 	}
 
 	buf := bytes.NewBuffer(b[1:]) // get rid of messageType
@@ -1143,7 +1219,7 @@ func NewCreateHTLCSigRevMsgFromBytes(b []byte, peerid uint32) (CreateHTLCSigRevM
 	return *sr, nil
 }
 
-func (self CreateHTLCSigRevMsg) Bytes() []byte {
+func (self AssignHTLCSigRevMsg) Bytes() []byte {
 	var msg []byte
 	msg = append(msg, self.MsgType())
 	opArr := OutPointToBytes(self.Outpoint)
@@ -1159,11 +1235,11 @@ func (self CreateHTLCSigRevMsg) Bytes() []byte {
 	return msg
 }
 
-func (self CreateHTLCSigRevMsg) Peer() uint32   { return self.PeerIdx }
-func (self CreateHTLCSigRevMsg) MsgType() uint8 { return MSGID_CREATE_HTLC_SIGREV }
+func (self AssignHTLCSigRevMsg) Peer() uint32   { return self.PeerIdx }
+func (self AssignHTLCSigRevMsg) MsgType() uint8 { return MSGID_CREATE_HTLC_SIGREV }
 
 //message for signaling state has moved, revoking old state
-type CreateHTLCGapSigRevMsg struct {
+type AssignHTLCGapSigRevMsg struct {
 	PeerIdx    uint32
 	Outpoint   wire.OutPoint
 	Incoming   bool
@@ -1172,8 +1248,8 @@ type CreateHTLCGapSigRevMsg struct {
 	N2ElkPoint [33]byte
 }
 
-func NewCreateHTLCGapSigRev(peerid uint32, OP wire.OutPoint, INCOMING bool, SIG [64]byte, ELK chainhash.Hash, N2ELK [33]byte) CreateHTLCGapSigRevMsg {
-	g := new(CreateHTLCGapSigRevMsg)
+func NewAssignHTLCGapSigRev(peerid uint32, OP wire.OutPoint, INCOMING bool, SIG [64]byte, ELK chainhash.Hash, N2ELK [33]byte) AssignHTLCGapSigRevMsg {
+	g := new(AssignHTLCGapSigRevMsg)
 	g.PeerIdx = peerid
 	g.Outpoint = OP
 	g.Incoming = INCOMING
@@ -1183,12 +1259,12 @@ func NewCreateHTLCGapSigRev(peerid uint32, OP wire.OutPoint, INCOMING bool, SIG 
 	return *g
 }
 
-func NewCreateHTLCGapSigRevMsgFromBytes(b []byte, peerId uint32) (CreateHTLCGapSigRevMsg, error) {
-	gs := new(CreateHTLCGapSigRevMsg)
+func NewAssignHTLCGapSigRevMsgFromBytes(b []byte, peerId uint32) (AssignHTLCGapSigRevMsg, error) {
+	gs := new(AssignHTLCGapSigRevMsg)
 	gs.PeerIdx = peerId
 
 	if len(b) < 170 {
-		return *gs, fmt.Errorf("got %d byte CreateHTLCGapSigRev, expect 170", len(b))
+		return *gs, fmt.Errorf("got %d byte AssignHTLCGapSigRev, expect 170", len(b))
 	}
 
 	buf := bytes.NewBuffer(b[1:]) // get rid of messageType
@@ -1208,7 +1284,7 @@ func NewCreateHTLCGapSigRevMsgFromBytes(b []byte, peerId uint32) (CreateHTLCGapS
 	return *gs, nil
 }
 
-func (self CreateHTLCGapSigRevMsg) Bytes() []byte {
+func (self AssignHTLCGapSigRevMsg) Bytes() []byte {
 	var msg []byte
 	msg = append(msg, self.MsgType())
 	opArr := OutPointToBytes(self.Outpoint)
@@ -1224,11 +1300,11 @@ func (self CreateHTLCGapSigRevMsg) Bytes() []byte {
 	return msg
 }
 
-func (self CreateHTLCGapSigRevMsg) Peer() uint32   { return self.PeerIdx }
-func (self CreateHTLCGapSigRevMsg) MsgType() uint8 { return MSGID_CREATE_HTLC_GAPSIGREV }
+func (self AssignHTLCGapSigRevMsg) Peer() uint32   { return self.PeerIdx }
+func (self AssignHTLCGapSigRevMsg) MsgType() uint8 { return MSGID_CREATE_HTLC_GAPSIGREV }
 
 //send message accross channel using Elk info
-type CreateHTLCRevMsg struct {
+type AssignHTLCRevMsg struct {
 	PeerIdx    uint32
 	Outpoint   wire.OutPoint
 	Incoming   bool
@@ -1236,8 +1312,8 @@ type CreateHTLCRevMsg struct {
 	N2ElkPoint [33]byte
 }
 
-func NewCreateHTLCRevMsg(peerid uint32, OP wire.OutPoint, INCOMING bool, ELK chainhash.Hash, N2ELK [33]byte) CreateHTLCRevMsg {
-	r := new(CreateHTLCRevMsg)
+func NewAssignHTLCRevMsg(peerid uint32, OP wire.OutPoint, INCOMING bool, ELK chainhash.Hash, N2ELK [33]byte) AssignHTLCRevMsg {
+	r := new(AssignHTLCRevMsg)
 	r.PeerIdx = peerid
 	r.Outpoint = OP
 	r.Incoming = INCOMING
@@ -1246,12 +1322,12 @@ func NewCreateHTLCRevMsg(peerid uint32, OP wire.OutPoint, INCOMING bool, ELK cha
 	return *r
 }
 
-func NewCreateHTLCRevMsgFromBytes(b []byte, peerId uint32) (CreateHTLCRevMsg, error) {
-	rv := new(CreateHTLCRevMsg)
+func NewAssignHTLCRevMsgFromBytes(b []byte, peerId uint32) (AssignHTLCRevMsg, error) {
+	rv := new(AssignHTLCRevMsg)
 	rv.PeerIdx = peerId
 
 	if len(b) < 106 {
-		return *rv, fmt.Errorf("got %d byte CreateHTLCRev, expect 106", len(b))
+		return *rv, fmt.Errorf("got %d byte AssignHTLCRev, expect 106", len(b))
 	}
 
 	buf := bytes.NewBuffer(b[1:]) // get rid of messageType
@@ -1270,7 +1346,7 @@ func NewCreateHTLCRevMsgFromBytes(b []byte, peerId uint32) (CreateHTLCRevMsg, er
 	return *rv, nil
 }
 
-func (self CreateHTLCRevMsg) Bytes() []byte {
+func (self AssignHTLCRevMsg) Bytes() []byte {
 	var msg []byte
 	msg = append(msg, self.MsgType())
 	opArr := OutPointToBytes(self.Outpoint)
@@ -1285,8 +1361,8 @@ func (self CreateHTLCRevMsg) Bytes() []byte {
 	return msg
 }
 
-func (self CreateHTLCRevMsg) Peer() uint32   { return self.PeerIdx }
-func (self CreateHTLCRevMsg) MsgType() uint8 { return MSGID_CREATE_HTLC_REV }
+func (self AssignHTLCRevMsg) Peer() uint32   { return self.PeerIdx }
+func (self AssignHTLCRevMsg) MsgType() uint8 { return MSGID_CREATE_HTLC_REV }
 
 //////////////////////////////////////////////////////////////////////////////////////////////////
 // Open HTLC Messages
@@ -1298,16 +1374,18 @@ type OpenHTLCDeltaSigMsg struct {
 	Outpoint  wire.OutPoint
 	Delta     int32
 	Incoming  bool
+	Preimage  []int32
 	Signature [64]byte
 	Data      [32]byte
 }
 
-func NewOpenHTLCDeltaSigMsg(peerid uint32, OP wire.OutPoint, DELTA int32, INCOMING bool, SIG [64]byte, data [32]byte) OpenHTLCDeltaSigMsg {
+func NewOpenHTLCDeltaSigMsg(peerid uint32, OP wire.OutPoint, DELTA int32, INCOMING bool, PREIMAGE []int32, SIG [64]byte, data [32]byte) OpenHTLCDeltaSigMsg {
 	d := new(OpenHTLCDeltaSigMsg)
 	d.PeerIdx = peerid
 	d.Outpoint = OP
 	d.Delta = DELTA
 	d.Incoming = INCOMING
+	d.Preimage = PREIMAGE
 	d.Signature = SIG
 	d.Data = data
 	return *d
@@ -1317,8 +1395,8 @@ func NewOpenHTLCDeltaSigMsgFromBytes(b []byte, peerid uint32) (OpenHTLCDeltaSigM
 	ds := new(OpenHTLCDeltaSigMsg)
 	ds.PeerIdx = peerid
 
-	if len(b) < 109 {
-		return *ds, fmt.Errorf("got %d byte OpenHTLCDeltaSig, expect 109", len(b))
+	if len(b) < 129 {
+		return *ds, fmt.Errorf("got %d byte OpenHTLCDeltaSig, expect 129", len(b))
 	}
 
 	buf := bytes.NewBuffer(b[1:]) // get rid of messageType
@@ -1334,6 +1412,7 @@ func NewOpenHTLCDeltaSigMsgFromBytes(b []byte, peerid uint32) (OpenHTLCDeltaSigM
 	} else {
 		ds.Incoming = false
 	}
+	copy(ds.Preimage[:], BtI32Arr(buf.Next(20)))
 	copy(ds.Signature[:], buf.Next(64))
 	copy(ds.Data[:], buf.Next(32))
 	return *ds, nil
@@ -1350,6 +1429,7 @@ func (self OpenHTLCDeltaSigMsg) Bytes() []byte {
 	} else {
 		msg = append(msg, I32tB(0)...)
 	}
+	msg = append(msg, I32ArrtB(self.Preimage)...)
 	msg = append(msg, self.Signature[:]...)
 	msg = append(msg, self.Data[:]...)
 	return msg

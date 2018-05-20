@@ -9,41 +9,41 @@ import (
 
 // SendNextMsg determines what message needs to be sent next
 // based on the channel state.  It then calls the appropriate function.
-// func (nd *LitNode) CreateHTLCReSendMsg(qc *Qchan, incoming bool) error {
+// func (nd *LitNode) AssignHTLCReSendMsg(qc *Qchan, incoming bool) error {
 //   if (incoming) {
 //     // DeltaSig
 //   	if qc.State.Delta > 0 {
-//   		fmt.Printf("Sending previously sent CreateHTLCDeltaSig\n")
-//   		return nd.CreateHTLCSendDeltaSig(qc)
+//   		fmt.Printf("Sending previously sent AssignHTLCDeltaSig\n")
+//   		return nd.AssignHTLCSendDeltaSig(qc)
 //   	}
 //
 //   	// SigRev
 //   	if qc.State.Delta < 0 {
-//   		fmt.Printf("Sending previously sent CreateHTLCSigRev\n")
-//   		return nd.CreateHTLCSendSigRev(qc)
+//   		fmt.Printf("Sending previously sent AssignHTLCSigRev\n")
+//   		return nd.AssignHTLCSendSigRev(qc)
 //   	}
 //
 //   	// Rev
-//   	return nd.CreateHTLCSendREV(qc)
+//   	return nd.AssignHTLCSendREV(qc)
 //   } else {
 //     // DeltaSig
 //   	if qc.State.Delta < 0 {
-//   		fmt.Printf("Sending previously sent CreateHTLCDeltaSig\n")
-//   		return nd.CreateHTLCSendDeltaSig(qc)
+//   		fmt.Printf("Sending previously sent AssignHTLCDeltaSig\n")
+//   		return nd.AssignHTLCSendDeltaSig(qc)
 //   	}
 //
 //   	// SigRev
 //   	if qc.State.Delta > 0 {
-//   		fmt.Printf("Sending previously sent CreateHTLCSigRev\n")
-//   		return nd.CreateHTLCSendSigRev(qc)
+//   		fmt.Printf("Sending previously sent AssignHTLCSigRev\n")
+//   		return nd.AssignHTLCSendSigRev(qc)
 //   	}
 //
 //   	// Rev
-//   	return nd.CreateHTLCSendREV(qc)
+//   	return nd.AssignHTLCSendREV(qc)
 //   }
 // }
 
-func (nd *LitNode) CreateHTLCSendDeltaSig(q *Qchan, incoming bool) error {
+func (nd *LitNode) AssignHTLCSendDeltaSig(q *Qchan, incoming bool, htlc *HTLC) error {
 	// increment state number, update balance, go to next elkpoint
 	q.State.StateIdx++
   if (!incoming) {
@@ -59,19 +59,26 @@ func (nd *LitNode) CreateHTLCSendDeltaSig(q *Qchan, incoming bool) error {
 		return err
 	}
 
-  outMsg := lnutil.NewCreateHTLCDeltaSigMsg(q.Peer(), q.Op, -q.State.Delta, !incoming, sig, q.State.Data)
+	peerHTLC := new(lnutil.HTLC)
+	peerHTLC.Incoming = !htlc.Incoming
+	peerHTLC.Qchan1 = htlc.Qchan1
+	peerHTLC.ExchangeAmount = htlc.ExchangeAmount
+	peerHTLC.RHash = htlc.RHash
+	peerHTLC.Locktime = htlc.Locktime
+
+  outMsg := lnutil.NewAssignHTLCDeltaSigMsg(q.Peer(), q.Op, -q.State.Delta, !incoming, *peerHTLC, sig, q.State.Data)
 	nd.OmniOut <- outMsg
 
 	return nil
 }
 
-func (nd *LitNode) CreateHTLCDeltaSigHandler(msg lnutil.CreateHTLCDeltaSigMsg, qc *Qchan) error {
+func (nd *LitNode) AssignHTLCDeltaSigHandler(msg lnutil.AssignHTLCDeltaSigMsg, qc *Qchan) error {
 
 	var collision bool
 	//incomingDelta := uint32(math.Abs(float64(msg.Delta))) //int32 (may be negative, but should not be)
 	incomingDelta := msg.Delta
 
-	// we should be clear to send when we get a CreateHTLCDeltaSig
+	// we should be clear to send when we get a AssignHTLCDeltaSig
 	select {
 	case <-qc.ClearToSend:
 	// keep going, normal
@@ -85,7 +92,7 @@ func (nd *LitNode) CreateHTLCDeltaSigHandler(msg lnutil.CreateHTLCDeltaSigMsg, q
 	// load state from disk
 	err := nd.ReloadQchanState(qc)
 	if err != nil {
-		return fmt.Errorf("CreateHTLCDeltaSigHandler ReloadQchan err %s", err.Error())
+		return fmt.Errorf("AssignHTLCDeltaSigHandler ReloadQchan err %s", err.Error())
 	}
 
 	// TODO we should send a response that the channel is closed.
@@ -95,7 +102,7 @@ func (nd *LitNode) CreateHTLCDeltaSigHandler(msg lnutil.CreateHTLCDeltaSigMsg, q
 	// or merge 'break' and 'close' UI so that it breaks when it can't
 	// connect, and closes when it can.
 	if qc.CloseData.Closed {
-		return fmt.Errorf("CreateHTLCDeltaSigHandler err: %d, %d is closed.",
+		return fmt.Errorf("AssignHTLCDeltaSigHandler err: %d, %d is closed.",
 			qc.Peer(), qc.Idx())
 	}
 
@@ -107,7 +114,7 @@ func (nd *LitNode) CreateHTLCDeltaSigHandler(msg lnutil.CreateHTLCDeltaSigMsg, q
     } else {
       qc.State.Collision = int32(incomingDelta)
     }
-		fmt.Printf("CreateHTLC delta sig COLLISION (%d)\n", qc.State.Collision)
+		fmt.Printf("AssignHTLC delta sig COLLISION (%d)\n", qc.State.Collision)
 	}
 
 	// detect if channel is already locked, and lock if not
@@ -131,7 +138,7 @@ func (nd *LitNode) CreateHTLCDeltaSigHandler(msg lnutil.CreateHTLCDeltaSigMsg, q
   // 			"DeltaSigHandler err: chan %d delta %d, expect rev, send empty rev",
   // 			qc.Idx(), qc.State.Delta)
   //
-  // 		return nd.CreateHTLCSendREV(qc)
+  // 		return nd.AssignHTLCSendREV(qc)
   // 	}
   // } else {
   //   if qc.State.Delta > 0 {
@@ -139,19 +146,29 @@ func (nd *LitNode) CreateHTLCDeltaSigHandler(msg lnutil.CreateHTLCDeltaSigMsg, q
   // 			"DeltaSigHandler err: chan %d delta %d, expect rev, send empty rev",
   // 			qc.Idx(), qc.State.Delta)
   //
-  // 		return nd.CreateHTLCSendREV(qc)
+  // 		return nd.AssignHTLCSendREV(qc)
   // 	}
   // }
 
 	if !collision {
 		// no collision, incoming (negative) delta or zero saved based on funds going to HTLC from here or not
     qc.State.Delta = int32(incomingDelta)
+
+		copyHTLC := new(HTLC)
+		copyHTLC.Incoming = msg.HTLC.Incoming
+		copyHTLC.Qchan1 = msg.HTLC.Qchan1
+		copyHTLC.ExchangeAmount = msg.HTLC.ExchangeAmount
+		copyHTLC.RHash = msg.HTLC.RHash
+		copyHTLC.Locktime = msg.HTLC.Locktime
+
+
+		qc.State.CurrentHTLC = copyHTLC
 	}
 
   if (msg.Incoming) {
     // They have to actually send you money
     if incomingDelta < 1 {
-  			return fmt.Errorf("CreateHTLCDeltaSigHandler err: delta %d", incomingDelta)
+  			return fmt.Errorf("AssignHTLCDeltaSigHandler err: delta %d", incomingDelta)
   	}
 
     // perform minOutput check
@@ -171,7 +188,7 @@ func (nd *LitNode) CreateHTLCDeltaSigHandler(msg lnutil.CreateHTLCDeltaSigMsg, q
   } else {
     // You have to actually put money in the HTLC
     if incomingDelta > -1 {
-  			return fmt.Errorf("CreateHTLCDeltaSigHandler err: delta %d", incomingDelta)
+  			return fmt.Errorf("AssignHTLCDeltaSigHandler err: delta %d", incomingDelta)
   	}
 
     // perform minOutput check
@@ -208,29 +225,29 @@ func (nd *LitNode) CreateHTLCDeltaSigHandler(msg lnutil.CreateHTLCDeltaSigMsg, q
 	// and maybe collision; still haven't checked
 	err = nd.SaveQchanState(qc)
 	if err != nil {
-		return fmt.Errorf("CreateHTLCDeltaSigHandler SaveQchanState err %s", err.Error())
+		return fmt.Errorf("AssignHTLCDeltaSigHandler SaveQchanState err %s", err.Error())
 	}
 
 	if qc.State.Collision != 0 {
-		err = nd.CreateHTLCSendGapSigRev(qc, msg.Incoming)
+		err = nd.AssignHTLCSendGapSigRev(qc, msg.Incoming)
 		if err != nil {
-			return fmt.Errorf("CreateHTLCDeltaSigHandler SendGapSigRev err %s", err.Error())
+			return fmt.Errorf("AssignHTLCDeltaSigHandler SendGapSigRev err %s", err.Error())
 		}
 	} else { // saved to db, now proceed to create & sign their tx
-		err = nd.CreateHTLCSendSigRev(qc, msg.Incoming)
+		err = nd.AssignHTLCSendSigRev(qc, msg.Incoming)
 		if err != nil {
-			return fmt.Errorf("CreateHTLCDeltaSigHandler SendSigRev err %s", err.Error())
+			return fmt.Errorf("AssignHTLCDeltaSigHandler SendSigRev err %s", err.Error())
 		}
 	}
 	return nil
 }
 
-func (nd *LitNode) CreateHTLCSendGapSigRev(q *Qchan, incoming bool) error {
+func (nd *LitNode) AssignHTLCSendGapSigRev(q *Qchan, incoming bool) error {
 	// state should already be set to the "gap" state; generate signature for n+1
 	// the signature generation is similar to normal sigrev signing
 	// in these "send_whatever" methods we don't modify and save to disk
 
-	// state has been incremented in CreateHTLCDeltaSigHandler so n is the gap state
+	// state has been incremented in AssignHTLCDeltaSigHandler so n is the gap state
 	// revoke n-1
 	elk, err := q.ElkSnd.AtIndex(q.State.StateIdx - 1)
 	if err != nil {
@@ -257,13 +274,13 @@ func (nd *LitNode) CreateHTLCSendGapSigRev(q *Qchan, incoming bool) error {
 		return err
 	}
 
-	outMsg := lnutil.NewCreateHTLCGapSigRev(q.KeyGen.Step[3]&0x7fffffff, q.Op, !incoming, sig, *elk, n2ElkPoint)
+	outMsg := lnutil.NewAssignHTLCGapSigRev(q.KeyGen.Step[3]&0x7fffffff, q.Op, !incoming, sig, *elk, n2ElkPoint)
 	nd.OmniOut <- outMsg
 
 	return nil
 }
 
-func (nd *LitNode) CreateHTLCSendSigRev(q *Qchan, incoming bool) error {
+func (nd *LitNode) AssignHTLCSendSigRev(q *Qchan, incoming bool) error {
 
 	// revoke n-1
 	elk, err := q.ElkSnd.AtIndex(q.State.StateIdx - 1)
@@ -289,13 +306,13 @@ func (nd *LitNode) CreateHTLCSendSigRev(q *Qchan, incoming bool) error {
 		return err
 	}
 
-	outMsg := lnutil.NewCreateHTLCSigRev(q.KeyGen.Step[3]&0x7fffffff, q.Op, !incoming, sig, *elk, n2ElkPoint)
+	outMsg := lnutil.NewAssignHTLCSigRev(q.KeyGen.Step[3]&0x7fffffff, q.Op, !incoming, sig, *elk, n2ElkPoint)
 	nd.OmniOut <- outMsg
 
 	return nil
 }
 
-func (nd *LitNode) CreateHTLCGapSigRevHandler(msg lnutil.CreateHTLCGapSigRevMsg, q *Qchan) error {
+func (nd *LitNode) AssignHTLCGapSigRevHandler(msg lnutil.AssignHTLCGapSigRevMsg, q *Qchan) error {
 
 	// load qchan & state from DB
 	err := nd.ReloadQchanState(q)
@@ -303,11 +320,11 @@ func (nd *LitNode) CreateHTLCGapSigRevHandler(msg lnutil.CreateHTLCGapSigRevMsg,
 		return fmt.Errorf("GapSigRevHandler err %s", err.Error())
 	}
 
-	// check if we're supposed to get a CreateHTLCGapSigRev now. Collision should be set
+	// check if we're supposed to get a AssignHTLCGapSigRev now. Collision should be set
   if (!msg.Incoming) {
     if q.State.Collision != 0 {
   		return fmt.Errorf(
-  			"chan %d got CreateHTLCGapSigRev but collision = 0, delta = %d",
+  			"chan %d got AssignHTLCGapSigRev but collision = 0, delta = %d",
   			q.Idx(), q.State.Delta)
   	}
   }
@@ -325,7 +342,7 @@ func (nd *LitNode) CreateHTLCGapSigRevHandler(msg lnutil.CreateHTLCGapSigRevMsg,
 	// verify elkrem and save it in ram
 	err = q.AdvanceElkrem(&msg.Elk, msg.N2ElkPoint)
 	if err != nil {
-		return fmt.Errorf("CreateHTLCGapSigRevHandler err %s", err.Error())
+		return fmt.Errorf("AssignHTLCGapSigRevHandler err %s", err.Error())
 		// ! non-recoverable error, need to close the channel here.
 	}
 
@@ -333,25 +350,25 @@ func (nd *LitNode) CreateHTLCGapSigRevHandler(msg lnutil.CreateHTLCGapSigRevMsg,
 	stashElkPoint := q.State.ElkPoint
 	q.State.ElkPoint = q.State.NextElkPoint
 
-	// state is already incremented from CreateHTLCDeltaSigHandler, increment again for n+2
+	// state is already incremented from AssignHTLCDeltaSigHandler, increment again for n+2
 	// (note that we've moved n here.)
 	q.State.StateIdx++
 
 	// verify the sig
 	err = q.VerifySig(msg.Signature)
 	if err != nil {
-		return fmt.Errorf("CreateHTLCGapSigRevHandler err %s", err.Error())
+		return fmt.Errorf("AssignHTLCGapSigRevHandler err %s", err.Error())
 	}
 	// go back to sequential elkpoints
 	q.State.ElkPoint = stashElkPoint
 
 	err = nd.SaveQchanState(q)
 	if err != nil {
-		return fmt.Errorf("CreateHTLCGapSigRevHandler err %s", err.Error())
+		return fmt.Errorf("AssignHTLCGapSigRevHandler err %s", err.Error())
 	}
-	err = nd.CreateHTLCSendREV(q, msg.Incoming)
+	err = nd.AssignHTLCSendREV(q, msg.Incoming)
 	if err != nil {
-		return fmt.Errorf("CreateHTLCGapSigRevHandler err %s", err.Error())
+		return fmt.Errorf("AssignHTLCGapSigRevHandler err %s", err.Error())
 	}
 
 	// for justice, have to create signature for n-2.  Remember the n-2 amount
@@ -362,29 +379,29 @@ func (nd *LitNode) CreateHTLCGapSigRevHandler(msg lnutil.CreateHTLCGapSigRevMsg,
 	go func() {
 		err = nd.BuildJusticeSig(q)
 		if err != nil {
-			fmt.Printf("CreateHTLCGapSigRevHandler BuildJusticeSig err %s", err.Error())
+			fmt.Printf("AssignHTLCGapSigRevHandler BuildJusticeSig err %s", err.Error())
 		}
 	}()
 
 	return nil
 }
 
-func (nd *LitNode) CreateHTLCSigRevHandler(msg lnutil.CreateHTLCSigRevMsg, qc *Qchan) error {
+func (nd *LitNode) AssignHTLCSigRevHandler(msg lnutil.AssignHTLCSigRevMsg, qc *Qchan) error {
 
 	// load qchan & state from DB
 	err := nd.ReloadQchanState(qc)
 	if err != nil {
-		return fmt.Errorf("CreateHTLCSigRevHandler err %s", err.Error())
+		return fmt.Errorf("AssignHTLCSigRevHandler err %s", err.Error())
 	}
 
   if (msg.Incoming) {
     if qc.State.Delta < 0 {
-  		return fmt.Errorf("CreateHTLCSigRevHandler err: chan %d got CreateHTLCSigRev, expect CreateHTLCRev. delta %d",
+  		return fmt.Errorf("AssignHTLCSigRevHandler err: chan %d got AssignHTLCSigRev, expect AssignHTLCRev. delta %d",
   			qc.Idx(), qc.State.Delta)
   	}
   } else {
     if qc.State.Delta > 0 {
-  		return fmt.Errorf("CreateHTLCSigRevHandler err: chan %d got CreateHTLCSigRev, expect CreateHTLCRev. delta %d",
+  		return fmt.Errorf("AssignHTLCSigRevHandler err: chan %d got AssignHTLCSigRev, expect AssignHTLCRev. delta %d",
   			qc.Idx(), qc.State.Delta)
   	}
   }
@@ -393,17 +410,17 @@ func (nd *LitNode) CreateHTLCSigRevHandler(msg lnutil.CreateHTLCSigRevMsg, qc *Q
   // if (msg.Incoming) {
   //   if qc.State.Delta != 0 {
   // 		// re-send last rev; they probably didn't get it
-  // 		return nd.CreateHTLCSendREV(qc)
+  // 		return nd.AssignHTLCSendREV(qc)
   // 	}
   // } else {
   //   if qc.State.Delta == 0 {
   // 		// re-send last rev; they probably didn't get it
-  // 		return nd.CreateHTLCSendREV(qc)
+  // 		return nd.AssignHTLCSendREV(qc)
   // 	}
   // }
 
 	if qc.State.Collision != 0 {
-		return fmt.Errorf("chan %d got CreateHTLCSigRev, expect CreateHTLCGapSigRev delta %d col %d",
+		return fmt.Errorf("chan %d got AssignHTLCSigRev, expect AssignHTLCGapSigRev delta %d col %d",
 			qc.Idx(), qc.State.Delta, qc.State.Collision)
 	}
 
@@ -420,13 +437,13 @@ func (nd *LitNode) CreateHTLCSigRevHandler(msg lnutil.CreateHTLCSigRevMsg, qc *Q
 	// (if elkrem ingest fails later, at least we close out with a bit more money)
 	err = qc.VerifySig(msg.Signature)
 	if err != nil {
-		return fmt.Errorf("CreateHTLCSigRev err %s", err.Error())
+		return fmt.Errorf("AssignHTLCSigRev err %s", err.Error())
 	}
 
 	// verify elkrem and save it in ram
 	err = qc.AdvanceElkrem(&msg.Elk, msg.N2ElkPoint)
 	if err != nil {
-		return fmt.Errorf("CreateHTLCSigRev err %s", err.Error())
+		return fmt.Errorf("AssignHTLCSigRev err %s", err.Error())
 		// ! non-recoverable error, need to close the channel here.
 	}
 	// if the elkrem failed but sig didn't... we should update the DB to reflect
@@ -436,13 +453,13 @@ func (nd *LitNode) CreateHTLCSigRevHandler(msg lnutil.CreateHTLCSigRevMsg, qc *Q
 	// all verified; Save finished state to DB, puller is pretty much done.
 	err = nd.SaveQchanState(qc)
 	if err != nil {
-		return fmt.Errorf("CreateHTLCSigRev err %s", err.Error())
+		return fmt.Errorf("AssignHTLCSigRev err %s", err.Error())
 	}
 
-	fmt.Printf("CreateHTLCSigRev OK, state %d, will send CreateHTLCRev\n", qc.State.StateIdx)
-	err = nd.CreateHTLCSendREV(qc, msg.Incoming)
+	fmt.Printf("AssignHTLCSigRev OK, state %d, will send AssignHTLCRev\n", qc.State.StateIdx)
+	err = nd.AssignHTLCSendREV(qc, msg.Incoming)
 	if err != nil {
-		return fmt.Errorf("CreateHTLCSigRev err %s", err.Error())
+		return fmt.Errorf("AssignHTLCSigRev err %s", err.Error())
 	}
 
 	// now that we've saved & sent everything, before ending the function, we
@@ -455,7 +472,7 @@ func (nd *LitNode) CreateHTLCSigRevHandler(msg lnutil.CreateHTLCSigRevMsg, qc *Q
 	go func() {
 		err = nd.BuildJusticeSig(qc)
 		if err != nil {
-			fmt.Printf("CreateHTLCSigRevHandler BuildJusticeSig err %s", err.Error())
+			fmt.Printf("AssignHTLCSigRevHandler BuildJusticeSig err %s", err.Error())
 		}
 	}()
 
@@ -465,7 +482,7 @@ func (nd *LitNode) CreateHTLCSigRevHandler(msg lnutil.CreateHTLCSigRevMsg, qc *Q
 	return nil
 }
 
-func (nd *LitNode) CreateHTLCSendREV(q *Qchan, incoming bool) error {
+func (nd *LitNode) AssignHTLCSendREV(q *Qchan, incoming bool) error {
 	// revoke previous already built state
 	elk, err := q.ElkSnd.AtIndex(q.State.StateIdx - 1)
 	if err != nil {
@@ -477,31 +494,31 @@ func (nd *LitNode) CreateHTLCSendREV(q *Qchan, incoming bool) error {
 		return err
 	}
 
-	outMsg := lnutil.NewCreateHTLCRevMsg(q.Peer(), q.Op, !incoming, *elk, n2ElkPoint)
+	outMsg := lnutil.NewAssignHTLCRevMsg(q.Peer(), q.Op, !incoming, *elk, n2ElkPoint)
 	nd.OmniOut <- outMsg
 
 	return err
 }
 
-func (nd *LitNode) CreateHTLCRevHandler(msg lnutil.CreateHTLCRevMsg, qc *Qchan) error {
+func (nd *LitNode) AssignHTLCRevHandler(msg lnutil.AssignHTLCRevMsg, qc *Qchan) error {
 
 	// load qchan & state from DB
 	err := nd.ReloadQchanState(qc)
 	if err != nil {
-		return fmt.Errorf("CreateHTLCRevHandler err %s", err.Error())
+		return fmt.Errorf("AssignHTLCRevHandler err %s", err.Error())
 	}
 
   // TODO.jesus?AddCheck for else case
   // if (msg.Incoming) {
   //   // check if there's nothing for them to revoke
   //   if qc.State.Delta == 0 {
-  // 		return fmt.Errorf("got CreateHTLCRev, expected CreateHTLCDeltaSig, ignoring.")
+  // 		return fmt.Errorf("got AssignHTLCRev, expected AssignHTLCDeltaSig, ignoring.")
   // 	}
   //
   //   // maybe this is an unexpected rev, asking us for a rev repeat
   //   if qc.State.Delta < 0 {
-  // 		fmt.Printf("got CreateHTLCRev, expected CreateHTLCSigRev.  Re-sending last CreateHTLCRev.\n")
-  // 		return nd.CreateHTLCSendREV(qc)
+  // 		fmt.Printf("got AssignHTLCRev, expected AssignHTLCSigRev.  Re-sending last AssignHTLCRev.\n")
+  // 		return nd.AssignHTLCSendREV(qc)
   // 	}
   // }
 
@@ -509,7 +526,7 @@ func (nd *LitNode) CreateHTLCRevHandler(msg lnutil.CreateHTLCRevMsg, qc *Qchan) 
 	err = qc.AdvanceElkrem(&msg.Elk, msg.N2ElkPoint)
 	if err != nil {
 		fmt.Printf(" ! non-recoverable error, need to close the channel here.\n")
-		return fmt.Errorf("CreateHTLCRevHandler err %s", err.Error())
+		return fmt.Errorf("AssignHTLCRevHandler err %s", err.Error())
 	}
 	prevAmt := qc.State.MyAmt - int64(qc.State.Delta)
 	qc.State.Delta = 0
@@ -517,7 +534,7 @@ func (nd *LitNode) CreateHTLCRevHandler(msg lnutil.CreateHTLCRevMsg, qc *Qchan) 
 	// save to DB (new elkrem & point, delta zeroed)
 	err = nd.SaveQchanState(qc)
 	if err != nil {
-		return fmt.Errorf("CreateHTLCRevHandler err %s", err.Error())
+		return fmt.Errorf("AssignHTLCRevHandler err %s", err.Error())
 	}
 
 	// after saving cleared updated state, go back to previous state and build
@@ -527,13 +544,13 @@ func (nd *LitNode) CreateHTLCRevHandler(msg lnutil.CreateHTLCRevMsg, qc *Qchan) 
 	go func() {
 		err = nd.BuildJusticeSig(qc)
 		if err != nil {
-			fmt.Printf("CreateHTLCRevHandler BuildJusticeSig err %s", err.Error())
+			fmt.Printf("AssignHTLCRevHandler BuildJusticeSig err %s", err.Error())
 		}
 	}()
 
 	// got rev, assert clear to send
 	qc.ClearToSend <- true
 
-	fmt.Printf("CreateHTLCRev OK, state %d all clear.\n", qc.State.StateIdx)
+	fmt.Printf("AssignHTLCRev OK, state %d all clear.\n", qc.State.StateIdx)
 	return nil
 }
